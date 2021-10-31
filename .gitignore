@@ -1,0 +1,4 @@
+env/
+models/
+.vscode/
+__pycache__/
