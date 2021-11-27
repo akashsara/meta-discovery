@@ -24,6 +24,42 @@ from tensorflow.keras.optimizers import Adam
 from rl.agents.dqn import DQNAgent
 from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
 from rl.memory import SequentialMemory
+from rl.core import Processor
+
+class DQNAgentModified(DQNAgent):
+    def __init__(self, *args, **kwargs):
+        DQNAgent.__init__(self, *args, **kwargs)
+
+    def forward(self, observation):
+        # Select an action.
+        state = self.memory.get_recent_state(observation)
+        q_values = self.compute_q_values(state[0])
+        if self.training:
+            action = self.policy.select_action(q_values=q_values)
+        else:
+            action = self.test_policy.select_action(q_values=q_values)
+
+        # Book-keeping.
+        self.recent_observation = observation
+        self.recent_action = action
+
+        return action
+
+class MultiInputProcessor(Processor):
+    def __init__(self):
+        Processor.__init__(self)
+
+    def process_state_batch(self, state_batch):
+        final_state = []
+        if len(state_batch) == 1:
+            for items in zip(*state_batch):
+                final_state.append(items[0].reshape(1, -1))
+        else:
+            state_batch = np.squeeze(np.array(state_batch))
+            for items in zip(*state_batch):
+                final_state.append(np.stack(items, axis=0))
+        return final_state
+
 
 def env_algorithm_wrapper(env_algorithm, player, kwargs):
     env_algorithm(player, **kwargs)
@@ -71,9 +107,12 @@ def create_model(mode, n_actions, **kwargs):
         # Create Model
         state = kwargs["player"].create_empty_state_vector()
         state = kwargs["player"].state_to_machine_readable_state(state)
+        action_mask = np.array([0.0 for i in range(22)], dtype="float32")
+        state += [action_mask]
         max_values = kwargs["player"].lookup["max_values"]
         embedding_dim = kwargs["embedding_dim"]
         model = models.FullStateModel(n_actions, state, embedding_dim, max_values)
+        processor = MultiInputProcessor()
     elif mode == "SmallState":
         # Define Model
         model = Sequential()
@@ -81,10 +120,13 @@ def create_model(mode, n_actions, **kwargs):
         model.add(Flatten())
         model.add(Dense(64, activation="elu"))
         model.add(Dense(n_actions, activation="linear"))
-    return model
+        processor = None
+    return model, processor
 
 
-def create_rl_network(model, n_action, memory_size, training_steps, **kwargs):
+def create_rl_network(
+    model, processor, n_action, memory_size, training_steps, **kwargs
+):
     # Define Memory
     memory = SequentialMemory(limit=memory_size, window_length=1)
 
@@ -99,8 +141,9 @@ def create_rl_network(model, n_action, memory_size, training_steps, **kwargs):
     )
 
     # Define Agent
-    dqn = DQNAgent(
+    dqn = DQNAgentModified(
         model=model,
+        processor=processor,
         nb_actions=n_action,
         policy=policy,
         memory=memory,
@@ -121,16 +164,16 @@ def create_rl_network(model, n_action, memory_size, training_steps, **kwargs):
 
 if __name__ == "__main__":
     random_seed = 42
-    training_steps = 100000  # N/2 steps from each agent's perspective
+    training_steps = 10000  # N/2 steps from each agent's perspective
     memory_size = 10000
     evaluation_episodes = 100
     train_interval = 1
-    p1_log_interval = 10000
-    p2_log_interval = 10000
+    p1_log_interval = 1000
+    p2_log_interval = 1000
     p1_verbose = 1
     p2_verbose = 0
     model_dir = "models"
-    model_name = "self_play_full_state_dqn_100K_steps"
+    model_name = "self_play_full_state_dqn_10K_steps"
     mode = "FullState"
     embedding_dim = 128
     config = {
@@ -140,6 +183,9 @@ if __name__ == "__main__":
         "items_json": "https://raw.githubusercontent.com/itsjavi/showdown-data/main/dist/data/items.json",
         "lookup_filename": "player_lookup_dicts.joblib",
     }
+    # Set Random Seed
+    tf.random.set_seed(random_seed)
+    np.random.seed(random_seed)
 
     # Create Output Path
     model_parent_dir = os.path.join(model_dir, model_name)
@@ -149,30 +195,31 @@ if __name__ == "__main__":
     )
     if not os.path.exists(model_output_dir):
         os.makedirs(model_output_dir)
-    # Set Random Seed
-    tf.random.set_seed(random_seed)
-    np.random.seed(random_seed)
+
     # Create Players
     if mode == "FullState":
         player1 = FullStatePlayer(
-            config, battle_format="gen8randombattle", log_level=25
+            config, battle_format="gen8randombattle", log_level=50
         )
         config["create"] = False
         player2 = FullStatePlayer(
-            config, battle_format="gen8randombattle", log_level=25
+            config, battle_format="gen8randombattle", log_level=50
         )
     elif mode == "SmallState":
-        player1 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=25)
-        player2 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=25)
+        player1 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
+        player2 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
     n_actions = len(player1.action_space)
     # Create RL and Model Configs
     dqn_kwargs = {"train_interval": train_interval}
     player1_kwargs = {"verbose": p1_verbose, "log_interval": p1_log_interval}
     player2_kwargs = {"verbose": p2_verbose, "log_interval": p2_log_interval}
     # Create Model
-    model = create_model(mode, n_actions, player=player1, embedding_dim=embedding_dim)
+    model, processor = create_model(
+        mode, n_actions, player=player1, embedding_dim=embedding_dim
+    )
+    print(model.summary())
     # create RL Network
-    dqn = create_rl_network(model, n_actions, memory_size, training_steps)
+    dqn = create_rl_network(model, processor, n_actions, memory_size, training_steps)
     # Create Environment Configs
     p1_env_kwargs = {"model": dqn, "nb_steps": training_steps, "kwargs": player1_kwargs}
     p2_env_kwargs = {"model": dqn, "nb_steps": training_steps, "kwargs": player2_kwargs}

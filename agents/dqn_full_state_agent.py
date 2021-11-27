@@ -12,16 +12,12 @@ from poke_env.environment.side_condition import SideCondition
 from poke_env.environment.effect import Effect
 from poke_env.environment.status import Status
 from poke_env.environment.pokemon_type import PokemonType
-from poke_env.environment.battle import Battle
-from poke_env.player.battle_order import BattleOrder
 from poke_env.utils import to_id_str
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
 class FullStatePlayer(Gen8EnvSinglePlayer):
-    def __init__(
-        self, config, *args, **kwargs
-    ):
+    def __init__(self, config, *args, **kwargs):
         """
         Some Notes:
         We create a lookup table for Pokemon/Abilities/Moves/Items.
@@ -46,6 +42,15 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             df["num"] = df["num"].astype(int)
             df.drop(df[df["num"] <= 0].index, inplace=True)
             pokemon = df.index.tolist() + ["unknown_pokemon"]
+            # Cosmetic Formes - Special case where certain Pokemon have
+            # different cosmetic forms. They have no gameplay impact though.
+            # So we consider them as their base form.
+            cosmetic = {
+                x: y
+                for x, y in df["cosmeticFormes"].fillna(False).to_dict().items()
+                if y
+            }
+            cosmetic_lookup = {to_id_str(z): x for x, y in cosmetic.items() for z in y}
             # Stats
             stats = list(df["baseStats"][0].keys())
             # Abilities
@@ -87,6 +92,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 "boosts": {x: i for i, x in enumerate(boosts)},
                 "items": {x: i for i, x in enumerate(items)},
                 "max_values": max_values,
+                "cosmetic": cosmetic_lookup,
             }
             joblib.dump(self.lookup, config["lookup_filename"])
         else:
@@ -122,13 +128,17 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 "fields": np.zeros((self.lookup["max_values"]["fields"])),
             },
             "player_team": {
-                "side_conditions": np.zeros((self.lookup["max_values"]["side_conditions"])),
+                "side_conditions": np.zeros(
+                    (self.lookup["max_values"]["side_conditions"])
+                ),
                 "can_dynamax": False,
                 "dynamax_turns_left": 0,
                 "pokemon": [pokemon for i in range(6)],
             },
             "opponent_team": {
-                "side_conditions": np.zeros((self.lookup["max_values"]["side_conditions"])),
+                "side_conditions": np.zeros(
+                    (self.lookup["max_values"]["side_conditions"])
+                ),
                 "can_dynamax": False,
                 "dynamax_turns_left": 0,
                 "pokemon": [pokemon for i in range(6)],
@@ -136,63 +146,48 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         }
 
     def state_to_machine_readable_state(self, state):
-        battle_state = (
-            np.concatenate([state["battle"]["weather"], state["battle"]["fields"]])
-            .reshape(1, -1)
-            .astype("float32")
-        )
-        player_state = (
-            np.concatenate(
-                [
-                    state["player_team"]["side_conditions"],
-                    np.array([state["player_team"]["can_dynamax"]]).astype(int),
-                    np.array([state["player_team"]["dynamax_turns_left"]]),
-                ]
-            )
-            .reshape(1, -1)
-            .astype("float32")
-        )
-        opponent_state = (
-            np.concatenate(
-                [
-                    state["opponent_team"]["side_conditions"],
-                    np.array([state["opponent_team"]["can_dynamax"]]).astype(int),
-                    np.array([state["opponent_team"]["dynamax_turns_left"]]),
-                ]
-            )
-            .reshape(1, -1)
-            .astype("float32")
-        )
-        player_team = []
-        opponent_team = []
-        for key, value in {
-            "player_team": player_team,
-            "opponent_team": opponent_team,
-        }.items():
+        battle_state = np.concatenate(
+            [state["battle"]["weather"], state["battle"]["fields"]]
+        ).astype("float32")
+        player_state = np.concatenate(
+            [
+                state["player_team"]["side_conditions"],
+                np.array([state["player_team"]["can_dynamax"]]).astype(int),
+                np.array([state["player_team"]["dynamax_turns_left"]]),
+            ]
+        ).astype("float32")
+        opponent_state = np.concatenate(
+            [
+                state["opponent_team"]["side_conditions"],
+                np.array([state["opponent_team"]["can_dynamax"]]).astype(int),
+                np.array([state["opponent_team"]["dynamax_turns_left"]]),
+            ]
+        ).astype("float32")
+        teams = {
+            "player_team": [],
+            "opponent_team": [],
+        }
+        for key, value in teams.items():
             for pokemon in state[key]["pokemon"]:
-                pokemon_others_state = (
-                    np.concatenate(
-                        [
-                            pokemon["type"],
-                            pokemon["effects"],
-                            pokemon["status"],
-                            np.array(pokemon["base_stats"]),
-                            np.array(pokemon["stat_boosts"]),
-                            np.array(pokemon["moves_pp"]),
-                            np.array([pokemon["level"]]),
-                            np.array([pokemon["health"]]),
-                            np.array([pokemon["protect_counter"]]),
-                            np.array([pokemon["status_counter"]]),
-                            np.array([pokemon["fainted"]]).astype(int),
-                            np.array([pokemon["active"]]).astype(int),
-                            np.array([pokemon["first_turn"]]).astype(int),
-                            np.array([pokemon["must_recharge"]]).astype(int),
-                            np.array([pokemon["preparing"]]).astype(int),
-                        ]
-                    )
-                    .reshape(1, -1)
-                    .astype("float32")
-                )
+                pokemon_others_state = np.concatenate(
+                    [
+                        pokemon["type"],
+                        pokemon["effects"],
+                        pokemon["status"],
+                        np.array(pokemon["base_stats"]),
+                        np.array(pokemon["stat_boosts"]),
+                        np.array(pokemon["moves_pp"]),
+                        np.array([pokemon["level"]]),
+                        np.array([pokemon["health"]]),
+                        np.array([pokemon["protect_counter"]]),
+                        np.array([pokemon["status_counter"]]),
+                        np.array([pokemon["fainted"]]).astype(int),
+                        np.array([pokemon["active"]]).astype(int),
+                        np.array([pokemon["first_turn"]]).astype(int),
+                        np.array([pokemon["must_recharge"]]).astype(int),
+                        np.array([pokemon["preparing"]]).astype(int),
+                    ]
+                ).astype("float32")
                 pokemon_state = [
                     np.array([pokemon["species"]]),
                     np.array([pokemon["item"]]),
@@ -203,13 +198,13 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 ]
                 # Ensures active Pokemon is always in the first slot of the team
                 if pokemon["active"]:
-                    value = [pokemon_state] + value
+                    teams[key] = pokemon_state + teams[key]
                 else:
-                    value.append(pokemon_state)
+                    teams[key] = teams[key] + pokemon_state
         return [
-            *player_team,
+            *teams["player_team"],
             player_state,
-            *opponent_team,
+            *teams["opponent_team"],
             opponent_state,
             battle_state,
         ]
@@ -243,7 +238,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
 
         # Weather: Dict[Weather: int=Start Turn]
         for key, value in battle.weather.items():
-            state["battle"]["weather"] = key.value - 1
+            state["battle"]["weather"][key.value - 1] = 1
 
         # Team Info: 6 Pokemon, Team Conditions (Entry Hazards, Reflect etc.)
         # side_conditions: Dict[SideCondition: int=Start Turn/Stacks]
@@ -294,11 +289,12 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         }
         for key, value in all_pokemon.items():
             for i, (_, pokemon) in enumerate(value.items()):
-
                 # Pokemon Species - One Hot Encoding(num_pokemon)
                 # Visibility: Revealed
                 if pokemon.species:
-                    species = self.lookup["pokemon"][pokemon.species]
+                    species = pokemon.species
+                    species = self.lookup["cosmetic"].get(species, species)
+                    species = self.lookup["pokemon"][species]
                     state[key]["pokemon"][i]["species"] = species
 
                 # Equipped Item: One Hot Encoding(num_items)
@@ -336,21 +332,21 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
 
                 # Pokemon Types - One Hot Encoding(2, num_types)
                 # Visibility: Revealed
-                state[key]["pokemon"][i]["type"][0] = pokemon.type_1.value - 1
+                state[key]["pokemon"][i]["type"][pokemon.type_1.value - 1] = 1
                 if pokemon.type_2:
-                    state[key]["pokemon"][i]["type"][1] = pokemon.type_2.value - 1
+                    state[key]["pokemon"][i]["type"][pokemon.type_2.value - 1] = 1
 
                 # Volatiles/Effects: One Hot Encoding(num_effects)
                 # Visibility: All
                 for effect, counter in pokemon.effects.items():
-                    state[key]["pokemon"][i]["effects"][effect.value] = 1
+                    state[key]["pokemon"][i]["effects"][effect.value - 1] = 1
 
                 # Pokemon Status Conditions - One Hot Encoding(num_status)
                 # Status Counter (Only For Toxic & Sleep) - Float
                 # Visibility: All
                 status = pokemon.status  # Status or None
                 if status:
-                    state[key]["pokemon"][i]["status"] = status.value - 1
+                    state[key]["pokemon"][i]["status"][status.value - 1] = 1
                     # Max Turns for Toxic is 16 (Does 100% Damage)
                     if status.name == "TOX":
                         state[key]["pokemon"][i]["status_counter"] = (
@@ -368,7 +364,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 # Visibility: All
                 for stat, value in pokemon.base_stats.items():
                     stat = self.lookup["stats"][stat]
-                    state[key]["pokemon"][i][stat] = value
+                    state[key]["pokemon"][i]["base_stats"][stat] = value / 255
 
                 # Stat Boosts: float[-1,+1]
                 # Visibility: All
@@ -413,7 +409,12 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
 
                 # Preparing For Attack (Dig/Bounce/etc.) - Boolean
                 # Visibility: All
-                state[key]["pokemon"][i]["preparing"] = pokemon.preparing
+                # TODO: Change this back when the bug is fixed.
+                # state[key]["pokemon"][i]["preparing"] = pokemon.preparing
+                if pokemon.preparing:
+                    state[key]["pokemon"][i]["preparing"] = True
+                else:
+                    state[key]["pokemon"][i]["preparing"] = False
 
         # Convert State Dict to State Vector for model
         state = self.state_to_machine_readable_state(state)
@@ -451,9 +452,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 not battle.force_switch
                 and battle.can_z_move
                 and battle.active_pokemon
-                and 0
-                <= action - 4
-                < len(battle.active_pokemon.available_z_moves)  
+                and 0 <= action - 4 < len(battle.active_pokemon.available_z_moves)
             ):
                 mask.append(0)
             elif (
@@ -472,5 +471,4 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 mask.append(0)
             else:
                 mask.append(-1e9)
-        return np.array(mask).reshape(1, -1).astype('float32')
-        
+        return np.array(mask, dtype="float32")
