@@ -45,6 +45,7 @@ class DQNAgentModified(DQNAgent):
 
         return action
 
+
 class MultiInputProcessor(Processor):
     def __init__(self):
         Processor.__init__(self)
@@ -125,7 +126,7 @@ def create_model(mode, n_actions, **kwargs):
 
 
 def create_rl_network(
-    model, processor, n_action, memory_size, training_steps, **kwargs
+    model, processor, mode, n_action, memory_size, training_steps, **kwargs
 ):
     # Define Memory
     memory = SequentialMemory(limit=memory_size, window_length=1)
@@ -140,20 +141,35 @@ def create_rl_network(
         nb_steps=training_steps,
     )
 
-    # Define Agent
-    dqn = DQNAgentModified(
-        model=model,
-        processor=processor,
-        nb_actions=n_action,
-        policy=policy,
-        memory=memory,
-        nb_steps_warmup=1000,
-        gamma=0.5,
-        target_model_update=1,
-        delta_clip=0.01,
-        enable_double_dqn=True,
-        **kwargs
-    )
+    if mode == "FullState":
+        # Define Agent
+        dqn = DQNAgentModified(
+            model=model,
+            processor=processor,
+            nb_actions=n_action,
+            policy=policy,
+            memory=memory,
+            nb_steps_warmup=1000,
+            gamma=0.5,
+            target_model_update=1,
+            delta_clip=0.01,
+            enable_double_dqn=True,
+            **kwargs
+        )
+    else:
+        dqn = DQNAgent(
+            model=model,
+            processor=processor,
+            nb_actions=n_action,
+            policy=policy,
+            memory=memory,
+            nb_steps_warmup=1000,
+            gamma=0.5,
+            target_model_update=1,
+            delta_clip=0.01,
+            enable_double_dqn=True,
+            **kwargs
+        )
 
     # Compile Network
     dqn.compile(Adam(learning_rate=0.0005), metrics=["mae"])
@@ -164,16 +180,18 @@ def create_rl_network(
 
 if __name__ == "__main__":
     random_seed = 42
-    training_steps = 10000  # N/2 steps from each agent's perspective
+    # N/2 steps from each agent's perspective.
+    # So set this to 2N if you want N steps.
+    training_steps = 100
     memory_size = 10000
-    evaluation_episodes = 100
+    evaluation_episodes = 1
     train_interval = 1
     p1_log_interval = 1000
     p2_log_interval = 1000
     p1_verbose = 1
     p2_verbose = 0
     model_dir = "models"
-    model_name = "self_play_full_state_dqn_10K_steps"
+    model_name = "self_play_full_state_dqn_1K_steps"
     mode = "FullState"
     embedding_dim = 128
     config = {
@@ -219,7 +237,9 @@ if __name__ == "__main__":
     )
     print(model.summary())
     # create RL Network
-    dqn = create_rl_network(model, processor, n_actions, memory_size, training_steps)
+    dqn = create_rl_network(
+        model, processor, mode, n_actions, memory_size, training_steps
+    )
     # Create Environment Configs
     p1_env_kwargs = {"model": dqn, "nb_steps": training_steps, "kwargs": player1_kwargs}
     p2_env_kwargs = {"model": dqn, "nb_steps": training_steps, "kwargs": player2_kwargs}
@@ -248,27 +268,35 @@ if __name__ == "__main__":
     model.save(model_output_dir)
 
     # Evaluation
-    test_player = SimpleRLPlayer(battle_format="gen8randombattle", log_level=25)
-    random_agent = RandomPlayer(battle_format="gen8randombattle", log_level=25)
-    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", log_level=25)
-    smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle")
+    if mode == "FullState":
+        test_player = FullStatePlayer(
+            config, battle_format="gen8randombattle", log_level=50
+        )
+    elif mode == "SmallState":
+        test_player = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
+
+    random_agent = RandomPlayer(battle_format="gen8randombattle", log_level=50)
+    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", log_level=50)
+    smart_max_damage_agent = SmartMaxDamagePlayer(
+        battle_format="gen8randombattle", log_level=50
+    )
     print("Results against random player:")
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=random_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": evaluation_episodes},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": evaluation_episodes},
     )
 
     print("\nResults against max player:")
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=max_damage_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": evaluation_episodes},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": evaluation_episodes},
     )
 
     print("\nResults against smart max player:")
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=smart_max_damage_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": evaluation_episodes},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": evaluation_episodes},
     )
