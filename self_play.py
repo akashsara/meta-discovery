@@ -28,11 +28,12 @@ from rl.core import Processor
 
 class DQNAgentModified(DQNAgent):
     def __init__(self, *args, **kwargs):
-        DQNAgent.__init__(self, *args, **kwargs)
-
+        super().__init__(*args, **kwargs)
+        
     def forward(self, observation):
         # Select an action.
         state = self.memory.get_recent_state(observation)
+        # state -> state[0] due to our complex input
         q_values = self.compute_q_values(state[0])
         if self.training:
             action = self.policy.select_action(q_values=q_values)
@@ -184,7 +185,7 @@ if __name__ == "__main__":
     # So set this to 2N if you want N steps.
     training_steps = 10000
     memory_size = 10000
-    evaluation_episodes = 1
+    evaluation_episodes = 100
     train_interval = 1
     p1_log_interval = 1000
     p2_log_interval = 1000
