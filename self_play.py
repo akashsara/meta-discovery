@@ -208,7 +208,7 @@ if __name__ == "__main__":
 
     # Create Output Path
     model_parent_dir = os.path.join(model_dir, model_name)
-    model_output_dir = os.path.join(model_dir, model_name, model_name)
+    model_output_dir = os.path.join(model_parent_dir, model_name)
     config["lookup_filename"] = os.path.join(
         model_parent_dir, config["lookup_filename"]
     )
