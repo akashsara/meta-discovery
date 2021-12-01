@@ -183,16 +183,16 @@ if __name__ == "__main__":
     random_seed = 42
     # N/2 steps from each agent's perspective.
     # So set this to 2N if you want N steps.
-    training_steps = 10000
+    training_steps = 1000000
     memory_size = 10000
     evaluation_episodes = 100
-    train_interval = 1
+    train_interval = 100
     p1_log_interval = 1000
     p2_log_interval = 1000
     p1_verbose = 1
     p2_verbose = 0
     model_dir = "models"
-    model_name = "self_play_full_state_dqn_10K_steps"
+    model_name = "sp_dqn_1000000steps_100train"
     mode = "FullState"
     embedding_dim = 128
     config = {

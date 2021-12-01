@@ -472,3 +472,15 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             else:
                 mask.append(-1e9)
         return np.array(mask, dtype="float32")
+
+class FullStatePlayerTesting(FullStatePlayer):
+    def __init__(self, model, *args, **kwargs):
+        FullStatePlayer.__init__(self, *args, **kwargs)
+        self.model = model
+        print(model.summary())
+
+    def choose_move(self, battle):
+        state = self.embed_battle(battle)
+        predictions = self.model.predict(state)
+        action = np.argmax(predictions)
+        return self._action_to_move(action, battle)
