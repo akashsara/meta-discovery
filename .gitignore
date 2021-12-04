@@ -3,3 +3,4 @@ models/
 .vscode/
 __pycache__/
 pokemon_showdown_accounts.py
+*.joblib
