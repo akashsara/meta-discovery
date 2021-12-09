@@ -154,6 +154,9 @@ def BattleModel(team_model, n_actions, battle_sample):
     battle_information = Concatenate()([player_team, opponent_team, battle_inputs])
     # Battle Embedding - Get the final embedding of the entire battle
     battle_embedding = Dense(n_actions)(battle_information)
+    # TODO: Concat battle embedding with vectors for each action.
+    # TODO: Concat each action-specific vector so we have (22, len)
+    # TODO: Apply Masked Softmax. We should get 
     # Create Mask for Invalid Actions
     mask = Input(shape=((n_actions)), name="action_mask")
     # Apply Mask 
@@ -183,6 +186,7 @@ def FullStateModel(n_actions, state, embedding_dim, max_values):
     # pokemon_move4, pokemon_others_state
     # This means we have a total of 12 pokemon * 11 = 132 
     # 132 pokemon states + 2 team states + 1 battle state + 1 mask = 136
+    # TODO: At present we just predict all actions from a single state. We should be doing the action concatenation thing from the paper.
     
     # Here 0:11 = One Full Pokemon
     pokemon_model = PokemonModel(state[0:11], embedding_dim, max_values)
