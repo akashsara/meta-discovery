@@ -153,8 +153,8 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     # Create Output Path
-    model_parent_dir = os.path.join(model_dir, model_name)
-    model_output_dir = os.path.join(model_parent_dir, model_name)
+    model_parent_dir = os.path.join(model_dir, experiment_name)
+    model_output_dir = os.path.join(model_parent_dir, experiment_name)
     config["lookup_filename"] = os.path.join(
         model_parent_dir, config["lookup_filename"]
     )
