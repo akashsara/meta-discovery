@@ -104,97 +104,42 @@ async def launch_battles(player, opponent):
     await battles_coroutine
 
 
-def create_model(mode, n_actions, **kwargs):
-    if mode == "FullState":
-        # Create Model
-        state = kwargs["player"].create_empty_state_vector()
-        state = kwargs["player"].state_to_machine_readable_state(state)
-        action_mask = np.array([0.0 for i in range(22)], dtype="float32")
-        state += [action_mask]
-        max_values = kwargs["player"].lookup["max_values"]
-        embedding_dim = kwargs["embedding_dim"]
-        model = models.FullStateModel(n_actions, state, embedding_dim, max_values)
-        processor = MultiInputProcessor()
-    elif mode == "SmallState":
-        # Define Model
-        model = Sequential()
-        model.add(Dense(128, activation="elu", input_shape=(1, 10)))
-        model.add(Flatten())
-        model.add(Dense(64, activation="elu"))
-        model.add(Dense(n_actions, activation="linear"))
-        processor = None
+def create_model(n_actions, player, embedding_dim):
+    # Create Model
+    state = player.create_empty_state_vector()
+    state = player.state_to_machine_readable_state(state)
+    action_mask = np.array([0.0 for i in range(22)], dtype="float32")
+    state += [action_mask]
+    max_values = player.lookup["max_values"]
+    model = models.FullStateModel(n_actions, state, embedding_dim, max_values)
+    processor = MultiInputProcessor()
     return model, processor
 
 
-def create_rl_network(
-    model, processor, mode, n_action, memory_size, training_steps, **kwargs
-):
-    # Define Memory
-    memory = SequentialMemory(limit=memory_size, window_length=1)
-
-    # Define Policy
-    policy = LinearAnnealedPolicy(
-        EpsGreedyQPolicy(),
-        attr="eps",
-        value_max=1.0,
-        value_min=0.05,
-        value_test=0,
-        nb_steps=training_steps,
-    )
-
-    if mode == "FullState":
-        # Define Agent
-        dqn = DQNAgentModified(
-            model=model,
-            processor=processor,
-            nb_actions=n_action,
-            policy=policy,
-            memory=memory,
-            nb_steps_warmup=1000,
-            gamma=0.5,
-            target_model_update=1,
-            delta_clip=0.01,
-            enable_double_dqn=True,
-            **kwargs
-        )
-    else:
-        dqn = DQNAgent(
-            model=model,
-            processor=processor,
-            nb_actions=n_action,
-            policy=policy,
-            memory=memory,
-            nb_steps_warmup=1000,
-            gamma=0.5,
-            target_model_update=1,
-            delta_clip=0.01,
-            enable_double_dqn=True,
-            **kwargs
-        )
-
-    # Compile Network
-    dqn.compile(Adam(learning_rate=0.0005), metrics=["mae"])
-
-    # Return
-    return dqn
-
-
 if __name__ == "__main__":
-    random_seed = 42
-    # N/2 steps from each agent's perspective.
-    # So set this to 2N if you want N steps.
-    training_steps = 1000000
-    memory_size = 10000
-    evaluation_episodes = 100
-    train_interval = 100
-    p1_log_interval = 1000
-    p2_log_interval = 1000
+    # Config - Hyperparameters
+    NB_TRAINING_STEPS = 10000 # N/2 steps from each agent's perspective.
+    NB_EVALUATION_EPISODES = 100
+    MEMORY_SIZE = 10000
+    LOG_INTERVAL = 1000
+    TRAIN_INTERVAL = 1
+    TARGET_MODEL_UPDATE = 1000
+    RANDOM_SEED = 42
+    embedding_dim = 128
+
+    # Config - Logging stuff 
+    p1_log_interval = LOG_INTERVAL
+    p2_log_interval = LOG_INTERVAL
     p1_verbose = 1
     p2_verbose = 0
+    
+    # Config - Versioning
+    version = 1
+    model_name = "Random"
+    experiment_name = f"FullState_SelfPlay_DQN_{model_name}_v{version}"
+
+    # Config - Model Save Directory
     model_dir = "models"
-    model_name = "sp_dqn_1000000steps_100train"
-    mode = "FullState"
-    embedding_dim = 128
     config = {
         "create": True,
         "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
@@ -202,9 +147,10 @@ if __name__ == "__main__":
         "items_json": "https://raw.githubusercontent.com/itsjavi/showdown-data/main/dist/data/items.json",
         "lookup_filename": "player_lookup_dicts.joblib",
     }
+
     # Set Random Seed
-    tf.random.set_seed(random_seed)
-    np.random.seed(random_seed)
+    tf.random.set_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
 
     # Create Output Path
     model_parent_dir = os.path.join(model_dir, model_name)
@@ -216,34 +162,61 @@ if __name__ == "__main__":
         os.makedirs(model_output_dir)
 
     # Create Players
-    if mode == "FullState":
-        player1 = FullStatePlayer(
-            config, battle_format="gen8randombattle", log_level=50
-        )
-        config["create"] = False
-        player2 = FullStatePlayer(
-            config, battle_format="gen8randombattle", log_level=50
-        )
-    elif mode == "SmallState":
-        player1 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
-        player2 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
+    player1 = FullStatePlayer(
+        config, battle_format="gen8randombattle", log_level=50
+    )
+    config["create"] = False
+    player2 = FullStatePlayer(
+        config, battle_format="gen8randombattle", log_level=50
+    )
     n_actions = len(player1.action_space)
+
     # Create RL and Model Configs
-    dqn_kwargs = {"train_interval": train_interval}
+    dqn_kwargs = {"train_interval": TRAIN_INTERVAL}
     player1_kwargs = {"verbose": p1_verbose, "log_interval": p1_log_interval}
     player2_kwargs = {"verbose": p2_verbose, "log_interval": p2_log_interval}
+
     # Create Model
     model, processor = create_model(
-        mode, n_actions, player=player1, embedding_dim=embedding_dim
+        n_actions, player=player1, embedding_dim=embedding_dim
     )
     print(model.summary())
-    # create RL Network
-    dqn = create_rl_network(
-        model, processor, mode, n_actions, memory_size, training_steps
+    
+    # Define Memory
+    memory = SequentialMemory(limit=MEMORY_SIZE, window_length=1)
+
+    # Define Policy
+    policy = LinearAnnealedPolicy(
+        EpsGreedyQPolicy(),
+        attr="eps",
+        value_max=1.0,
+        value_min=0.05,
+        value_test=0,
+        nb_steps=NB_TRAINING_STEPS,
     )
+
+    # Define Agent
+    dqn = DQNAgentModified(
+        model=model,
+        processor=processor,
+        nb_actions=n_actions,
+        policy=policy,
+        memory=memory,
+        nb_steps_warmup=1000,
+        gamma=0.5,
+        delta_clip=0.01,
+        enable_double_dqn=True,
+        target_model_update=TARGET_MODEL_UPDATE,
+        train_interval=TRAIN_INTERVAL
+    )
+
+    # Compile Network
+    dqn.compile(Adam(learning_rate=0.0005), metrics=["mae"])
+
     # Create Environment Configs
-    p1_env_kwargs = {"model": dqn, "nb_steps": training_steps, "kwargs": player1_kwargs}
-    p2_env_kwargs = {"model": dqn, "nb_steps": training_steps, "kwargs": player2_kwargs}
+    p1_env_kwargs = {"model": dqn, "nb_steps": NB_TRAINING_STEPS, "kwargs": player1_kwargs}
+    p2_env_kwargs = {"model": dqn, "nb_steps": NB_TRAINING_STEPS, "kwargs": player2_kwargs}
+
     # Make Two Threads And Play vs Each Other
     player1._start_new_battle = True
     player2._start_new_battle = True
@@ -269,35 +242,32 @@ if __name__ == "__main__":
     model.save(model_output_dir)
 
     # Evaluation
-    if mode == "FullState":
-        test_player = FullStatePlayer(
-            config, battle_format="gen8randombattle", log_level=50
-        )
-    elif mode == "SmallState":
-        test_player = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
-
-    random_agent = RandomPlayer(battle_format="gen8randombattle", log_level=50)
-    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", log_level=50)
-    smart_max_damage_agent = SmartMaxDamagePlayer(
-        battle_format="gen8randombattle", log_level=50
+    test_player = FullStatePlayer(
+        config, battle_format="gen8randombattle", log_level=50
     )
+
     print("Results against random player:")
+    random_agent = RandomPlayer(battle_format="gen8randombattle", log_level=50)
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=random_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": evaluation_episodes},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
     )
 
     print("\nResults against max player:")
+    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", log_level=50)
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=max_damage_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": evaluation_episodes},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
     )
 
     print("\nResults against smart max player:")
+    smart_max_damage_agent = SmartMaxDamagePlayer(
+        battle_format="gen8randombattle", log_level=50
+    )
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=smart_max_damage_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": evaluation_episodes},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
     )
