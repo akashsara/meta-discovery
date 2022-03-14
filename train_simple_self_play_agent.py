@@ -84,9 +84,7 @@ if __name__ == "__main__":
     p2_verbose = 0
     
     # Config - Versioning
-    version = 1
-    model_name = "Random"
-    experiment_name = f"Simple_SelfPlay_DQN_{model_name}_v{version}"
+    experiment_name = f"Simple_SelfPlay_DQN_Base_v1"
 
     # Config - Model Save Directory
     model_dir = "models"

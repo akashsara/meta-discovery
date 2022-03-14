@@ -102,9 +102,7 @@ if __name__ == "__main__":
 
     # Config - Versioning
     training_opponent = "smart" # random, max, smart
-    version = 1
-    model_name = "Random"
-    experiment_name = f"FullState_DQN_{model_name}_v{version}"
+    experiment_name = f"FullState_DQN_Base_v1"
 
     # Config - Model Save Directory/Config Directory
     model_dir = "models"
