@@ -108,7 +108,7 @@ def create_model(n_actions, player, embedding_dim):
     # Create Model
     state = player.create_empty_state_vector()
     state = player.state_to_machine_readable_state(state)
-    action_mask = np.array([0.0 for i in range(22)], dtype="float32")
+    action_mask = np.array([0.0 for i in range(n_actions)], dtype="float32")
     state += [action_mask]
     max_values = player.lookup["max_values"]
     model = models.FullStateModel(n_actions, state, embedding_dim, max_values)
