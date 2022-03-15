@@ -47,7 +47,7 @@ def model_training(player, model, nb_steps, kwargs):
 def model_evaluation(player, model, nb_episodes):
     # Reset battle statistics
     player.reset_battles()
-    model.test(player, nb_episodes=nb_episodes, visualize=False, verbose=2)
+    model.test(player, nb_episodes=nb_episodes, visualize=False, verbose=False)
 
     print(
         "DQN Evaluation: %d victories out of %d episodes"
