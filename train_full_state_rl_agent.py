@@ -5,21 +5,16 @@ import asyncio
 import os
 import numpy as np
 from poke_env.player.random_player import RandomPlayer
-from tabulate import tabulate
 from threading import Thread
 
-from poke_env.utils import to_id_str
-from poke_env.player.utils import cross_evaluate
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
-from agents.dqn_agent import SimpleRLPlayer
 from agents.dqn_full_state_agent import FullStatePlayer
 import models
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Flatten
-from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
+from poke_env.player_configuration import PlayerConfiguration
 
 from rl.agents.dqn import DQNAgent
 from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
@@ -103,6 +98,7 @@ if __name__ == "__main__":
     # Config - Versioning
     training_opponent = "smart" # random, max, smart
     experiment_name = f"FullState_DQN_Base_v1"
+    hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory/Config Directory
     model_dir = "models"
@@ -118,6 +114,13 @@ if __name__ == "__main__":
     tf.random.set_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
+    # Setup agent usernames for connecting to local showdown 
+    # This lets us train multiple agents while connecting to the same server
+    training_agent = PlayerConfiguration(hash_name + "_P1", None)
+    rand_player = PlayerConfiguration(hash_name + "_Rand", None)
+    max_player = PlayerConfiguration(hash_name + "_Max", None)
+    smax_player = PlayerConfiguration(hash_name + "_SMax", None)
+
     # Create Output Path
     model_parent_dir = os.path.join(model_dir, experiment_name)
     model_output_dir = os.path.join(model_parent_dir, experiment_name)
@@ -128,12 +131,12 @@ if __name__ == "__main__":
         os.makedirs(model_output_dir)
 
     # Create Player
-    player = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50)
+    env_player = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50)
 
     # Setup opponents
-    random_agent = RandomPlayer(battle_format="gen8randombattle")
-    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle")
-    smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle")
+    random_agent = RandomPlayer(battle_format="gen8randombattle", player_configuration=rand_player)
+    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", player_configuration=max_player)
+    smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle", player_configuration=smax_player)
     if training_opponent == "random":
         training_opponent = random_agent
     elif training_opponent == "max":
@@ -144,10 +147,10 @@ if __name__ == "__main__":
         raise ValueError("Unknown training opponent.")
 
     # Output dimension
-    n_actions = len(player.action_space)
+    n_actions = len(env_player.action_space)
 
     # Create Model
-    model, processor = create_model(n_actions, player, embedding_dim)
+    model, processor = create_model(n_actions, env_player, embedding_dim)
     print(model.summary())
 
     # Define Memory
@@ -182,7 +185,7 @@ if __name__ == "__main__":
     dqn.compile(Adam(learning_rate=0.0005), metrics=["mae"])
 
     # Train Model
-    player.play_against(
+    env_player.play_against(
         env_algorithm=dqn_training,
         opponent=training_opponent,
         env_algorithm_kwargs={"dqn": dqn, "nb_steps": NB_TRAINING_STEPS},
@@ -191,21 +194,21 @@ if __name__ == "__main__":
 
     # Evaluation
     print("Results against random player:")
-    player.play_against(
+    env_player.play_against(
         env_algorithm=dqn_evaluation,
         opponent=random_agent,
         env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
     )
 
     print("\nResults against max player:")
-    player.play_against(
+    env_player.play_against(
         env_algorithm=dqn_evaluation,
         opponent=max_damage_agent,
         env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
     )
 
     print("\nResults against smart max player:")
-    player.play_against(
+    env_player.play_against(
         env_algorithm=dqn_evaluation,
         opponent=smart_max_damage_agent,
         env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},

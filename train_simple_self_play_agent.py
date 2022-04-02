@@ -5,20 +5,17 @@ import asyncio
 import os
 import numpy as np
 from poke_env.player.random_player import RandomPlayer
-from tabulate import tabulate
 from threading import Thread
 
 from poke_env.utils import to_id_str
-from poke_env.player.utils import cross_evaluate
+from poke_env.player_configuration import PlayerConfiguration
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents.dqn_agent import SimpleRLPlayer
-from agents.dqn_full_state_agent import FullStatePlayer
 import models
+import time
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Flatten
-from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
 
 from rl.agents.dqn import DQNAgent
@@ -70,10 +67,10 @@ async def launch_battles(player, opponent):
 if __name__ == "__main__":
     # Config - Hyperparameters
     NB_TRAINING_STEPS = 10000 # N/2 steps from each agent's perspective.
-    NB_EVALUATION_EPISODES = 100
+    NB_EVALUATION_EPISODES = 0
     MEMORY_SIZE = 10000
     LOG_INTERVAL = 1000
-    TRAIN_INTERVAL = 1
+    TRAIN_INTERVAL = 10
     TARGET_MODEL_UPDATE = 1000
     RANDOM_SEED = 42
 
@@ -85,6 +82,7 @@ if __name__ == "__main__":
     
     # Config - Versioning
     experiment_name = f"Simple_SelfPlay_DQN_Base_v1"
+    hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
     model_dir = "models"
@@ -92,6 +90,15 @@ if __name__ == "__main__":
     # Set Random Seed
     tf.random.set_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
+
+    # Setup agent usernames for connecting to local showdown 
+    # This lets us train multiple agents while connecting to the same server
+    training_agent1 = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent2 = PlayerConfiguration(hash_name + "_P2", None)
+    eval_agent = PlayerConfiguration(hash_name + "_Eval", None)
+    rand_player = PlayerConfiguration(hash_name + "_Rand", None)
+    max_player = PlayerConfiguration(hash_name + "_Max", None)
+    smax_player = PlayerConfiguration(hash_name + "_SMax", None)
 
     # Create Output Path
     model_parent_dir = os.path.join(model_dir, experiment_name)
@@ -125,6 +132,7 @@ if __name__ == "__main__":
         nb_steps=NB_TRAINING_STEPS,
     )
 
+    # Create RL Network
     dqn = DQNAgent(
         model=model,
         nb_actions=n_actions,
@@ -170,10 +178,14 @@ if __name__ == "__main__":
     model.save(model_output_dir)
 
     # Evaluation
-    test_player = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
-
+    test_player = SimpleRLPlayer(
+        battle_format="gen8randombattle", log_level=50, player_configuration=eval_agent
+    )
+    
     print("Results against random player:")
-    random_agent = RandomPlayer(battle_format="gen8randombattle", log_level=50)
+    random_agent = RandomPlayer(
+        battle_format="gen8randombattle", log_level=50, player_configuration=rand_player
+    )
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=random_agent,
@@ -181,7 +193,9 @@ if __name__ == "__main__":
     )
 
     print("\nResults against max player:")
-    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", log_level=50)
+    max_damage_agent = MaxDamagePlayer(
+        battle_format="gen8randombattle", log_level=50, player_configuration=max_player
+    )
     test_player.play_against(
         env_algorithm=model_evaluation,
         opponent=max_damage_agent,
@@ -190,7 +204,7 @@ if __name__ == "__main__":
 
     print("\nResults against smart max player:")
     smart_max_damage_agent = SmartMaxDamagePlayer(
-        battle_format="gen8randombattle", log_level=50
+        battle_format="gen8randombattle", log_level=50, layer_configuration=smax_player
     )
     test_player.play_against(
         env_algorithm=model_evaluation,

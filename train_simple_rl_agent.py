@@ -12,6 +12,7 @@ from agents.dqn_agent import SimpleRLPlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from poke_env.player.random_player import RandomPlayer
+from poke_env.player_configuration import PlayerConfiguration
 
 from rl.agents.dqn import DQNAgent
 from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
@@ -48,6 +49,7 @@ if __name__ == "__main__":
     # Config - Versioning
     training_opponent = "smart" # random, max, smart
     experiment_name = f"Simple_DQN_Base_v1"
+    hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
     model_dir = "models"
@@ -56,6 +58,13 @@ if __name__ == "__main__":
     tf.random.set_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
+    # Setup agent usernames for connecting to local showdown 
+    # This lets us train multiple agents while connecting to the same server
+    training_agent = PlayerConfiguration(hash_name + "_P1", None)
+    rand_player = PlayerConfiguration(hash_name + "_Rand", None)
+    max_player = PlayerConfiguration(hash_name + "_Max", None)
+    smax_player = PlayerConfiguration(hash_name + "_SMax", None)
+
     # Create Output Path
     model_parent_dir = os.path.join(model_dir, experiment_name)
     model_output_dir = os.path.join(model_parent_dir, experiment_name)
@@ -63,12 +72,12 @@ if __name__ == "__main__":
         os.makedirs(model_output_dir)
 
     # Setup player
-    env_player = SimpleRLPlayer(battle_format="gen8randombattle")
+    env_player = SimpleRLPlayer(battle_format="gen8randombattle", player_configuration=training_agent)
     
     # Setup opponents
-    random_agent = RandomPlayer(battle_format="gen8randombattle")
-    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle")
-    smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle")
+    random_agent = RandomPlayer(battle_format="gen8randombattle", player_configuration=rand_player)
+    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", player_configuration=max_player)
+    smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle", player_configuration=smax_player)
     if training_opponent == "random":
         training_opponent = random_agent
     elif training_opponent == "max":
