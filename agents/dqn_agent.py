@@ -35,6 +35,8 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
             len([mon for mon in battle.opponent_team.values() if mon.fainted]) / 6
         )
 
+        self.mask = self.make_mask(battle)
+
         # Final vector with 10 components
         return np.concatenate(
             [
@@ -48,6 +50,46 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
         return self.reward_computing_helper(
             battle, fainted_value=2, hp_value=1, victory_value=30
         )
+
+    def get_action_mask(self):
+        return self.mask
+
+    def make_mask(self, battle):
+        mask = []
+        for action in range(len(self.action_space)):
+            action = action - 1
+            if action == -1:
+                mask.append(0)
+            elif (
+                action < 4
+                and action < len(battle.available_moves)
+                and not battle.force_switch
+            ):
+                mask.append(0)
+            elif (
+                not battle.force_switch
+                and battle.can_z_move
+                and battle.active_pokemon
+                and 0 <= action - 4 < len(battle.active_pokemon.available_z_moves)
+            ):
+                mask.append(0)
+            elif (
+                battle.can_mega_evolve
+                and 0 <= action - 8 < len(battle.available_moves)
+                and not battle.force_switch
+            ):
+                mask.append(0)
+            elif (
+                battle.can_dynamax
+                and 0 <= action - 12 < len(battle.available_moves)
+                and not battle.force_switch
+            ):
+                mask.append(0)
+            elif 0 <= action - 16 < len(battle.available_switches):
+                mask.append(0)
+            else:
+                mask.append(-1e9)
+        return np.array(mask, dtype="float32")
 
 
 class SimpleRLPlayerTesting(SimpleRLPlayer):
