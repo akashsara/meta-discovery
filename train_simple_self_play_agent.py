@@ -183,23 +183,24 @@ if __name__ == "__main__":
     smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle", player_configuration=smax_player)
 
     # Evaluation
-    print("Results against random player:")
-    player1.play_against(
-        env_algorithm=model_evaluation,
-        opponent=random_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
-    )
+    if NB_EVALUATION_EPISODES > 0:
+        print("Results against random player:")
+        player1.play_against(
+            env_algorithm=model_evaluation,
+            opponent=random_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
 
-    print("\nResults against max player:")
-    player1.play_against(
-        env_algorithm=model_evaluation,
-        opponent=max_damage_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
-    )
+        print("\nResults against max player:")
+        player1.play_against(
+            env_algorithm=model_evaluation,
+            opponent=max_damage_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
 
-    print("\nResults against smart max player:")
-    player1.play_against(
-        env_algorithm=model_evaluation,
-        opponent=smart_max_damage_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
-    )
+        print("\nResults against smart max player:")
+        player1.play_against(
+            env_algorithm=model_evaluation,
+            opponent=smart_max_damage_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )

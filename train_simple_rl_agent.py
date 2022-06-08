@@ -41,8 +41,8 @@ def model_evaluation(player, model, nb_episodes):
 if __name__ == "__main__":
     # Config - Hyperparameters
     RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 50000
-    NB_EVALUATION_EPISODES = 100
+    NB_TRAINING_STEPS = 10000
+    NB_EVALUATION_EPISODES = 00
 
     MODEL = models.SimpleModel
     MODEL_KWARGS = {}
@@ -149,23 +149,24 @@ if __name__ == "__main__":
     dqn.save(output_dir)
 
     # Evaluation
-    print("Results against random player:")
-    env_player.play_against(
-        env_algorithm=model_evaluation,
-        opponent=random_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
-    )
+    if NB_EVALUATION_EPISODES > 0:
+        print("Results against random player:")
+        env_player.play_against(
+            env_algorithm=model_evaluation,
+            opponent=random_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
 
-    print("\nResults against max player:")
-    env_player.play_against(
-        env_algorithm=model_evaluation,
-        opponent=max_damage_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
-    )
+        print("\nResults against max player:")
+        env_player.play_against(
+            env_algorithm=model_evaluation,
+            opponent=max_damage_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
 
-    print("\nResults against smart max player:")
-    env_player.play_against(
-        env_algorithm=model_evaluation,
-        opponent=smart_max_damage_agent,
-        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
-    )
+        print("\nResults against smart max player:")
+        env_player.play_against(
+            env_algorithm=model_evaluation,
+            opponent=smart_max_damage_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
