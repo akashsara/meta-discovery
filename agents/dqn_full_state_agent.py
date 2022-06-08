@@ -13,6 +13,7 @@ from poke_env.environment.effect import Effect
 from poke_env.environment.status import Status
 from poke_env.environment.pokemon_type import PokemonType
 from poke_env.utils import to_id_str
+import torch
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
@@ -97,6 +98,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             joblib.dump(self.lookup, config["lookup_filename"])
         else:
             self.lookup = joblib.load(config["lookup_filename"])
+        self.state_length_dict = {}
 
     def create_empty_state_vector(self):
         pokemon = {
@@ -105,9 +107,9 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             "ability": self.lookup["abilities"]["unknown_ability"],
             "possible_abilities": [self.lookup["abilities"]["unknown_ability"]] * 3,
             "moves": [self.lookup["moves"]["unknown_move"]] * 4,
-            "type": np.zeros((self.lookup["max_values"]["types"])),
-            "effects": np.zeros((self.lookup["max_values"]["effects"])),
-            "status": np.zeros((self.lookup["max_values"]["status"])),
+            "type": torch.zeros((self.lookup["max_values"]["types"])),
+            "effects": torch.zeros((self.lookup["max_values"]["effects"])),
+            "status": torch.zeros((self.lookup["max_values"]["status"])),
             # TODO: Set this to the average stat value instead.
             "base_stats": [0] * self.lookup["max_values"]["stats"],
             "stat_boosts": [0] * self.lookup["max_values"]["boosts"],
@@ -124,11 +126,11 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         }
         return {
             "battle": {
-                "weather": np.zeros((self.lookup["max_values"]["weather"])),
-                "fields": np.zeros((self.lookup["max_values"]["fields"])),
+                "weather": torch.zeros((self.lookup["max_values"]["weather"])),
+                "fields": torch.zeros((self.lookup["max_values"]["fields"])),
             },
             "player_team": {
-                "side_conditions": np.zeros(
+                "side_conditions": torch.zeros(
                     (self.lookup["max_values"]["side_conditions"])
                 ),
                 "can_dynamax": False,
@@ -136,7 +138,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 "pokemon": [pokemon for i in range(6)],
             },
             "opponent_team": {
-                "side_conditions": np.zeros(
+                "side_conditions": torch.zeros(
                     (self.lookup["max_values"]["side_conditions"])
                 ),
                 "can_dynamax": False,
@@ -146,68 +148,116 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         }
 
     def state_to_machine_readable_state(self, state):
-        battle_state = np.concatenate(
+        battle_state = torch.cat(
             [state["battle"]["weather"], state["battle"]["fields"]]
-        ).astype("float32")
-        player_state = np.concatenate(
+        ).float()
+        player_state = torch.cat(
             [
                 state["player_team"]["side_conditions"],
-                np.array([state["player_team"]["can_dynamax"]]).astype(int),
-                np.array([state["player_team"]["dynamax_turns_left"]]),
+                torch.tensor([state["player_team"]["can_dynamax"]]),
+                torch.tensor([state["player_team"]["dynamax_turns_left"]]),
             ]
-        ).astype("float32")
-        opponent_state = np.concatenate(
+        ).float()
+        opponent_state = torch.cat(
             [
                 state["opponent_team"]["side_conditions"],
-                np.array([state["opponent_team"]["can_dynamax"]]).astype(int),
-                np.array([state["opponent_team"]["dynamax_turns_left"]]),
+                torch.tensor([state["opponent_team"]["can_dynamax"]]),
+                torch.tensor([state["opponent_team"]["dynamax_turns_left"]]),
             ]
-        ).astype("float32")
+        ).float()
         teams = {
             "player_team": [],
             "opponent_team": [],
         }
         for key, value in teams.items():
             for pokemon in state[key]["pokemon"]:
-                pokemon_others_state = np.concatenate(
+                pokemon_others_state = torch.cat(
                     [
                         pokemon["type"],
                         pokemon["effects"],
                         pokemon["status"],
-                        np.array(pokemon["base_stats"]),
-                        np.array(pokemon["stat_boosts"]),
-                        np.array(pokemon["moves_pp"]),
-                        np.array([pokemon["level"]]),
-                        np.array([pokemon["health"]]),
-                        np.array([pokemon["protect_counter"]]),
-                        np.array([pokemon["status_counter"]]),
-                        np.array([pokemon["fainted"]]).astype(int),
-                        np.array([pokemon["active"]]).astype(int),
-                        np.array([pokemon["first_turn"]]).astype(int),
-                        np.array([pokemon["must_recharge"]]).astype(int),
-                        np.array([pokemon["preparing"]]).astype(int),
+                        torch.tensor(pokemon["base_stats"]),
+                        torch.tensor(pokemon["stat_boosts"]),
+                        torch.tensor(pokemon["moves_pp"]),
+                        torch.tensor([pokemon["level"]]),
+                        torch.tensor([pokemon["health"]]),
+                        torch.tensor([pokemon["protect_counter"]]),
+                        torch.tensor([pokemon["status_counter"]]),
+                        torch.tensor([pokemon["fainted"]]),
+                        torch.tensor([pokemon["active"]]),
+                        torch.tensor([pokemon["first_turn"]]),
+                        torch.tensor([pokemon["must_recharge"]]),
+                        torch.tensor([pokemon["preparing"]]),
                     ]
-                ).astype("float32")
-                pokemon_state = [
-                    np.array([pokemon["species"]]),
-                    np.array([pokemon["item"]]),
-                    np.array([pokemon["ability"]]),
-                    *[np.array([x]) for x in pokemon["possible_abilities"]],
-                    *[np.array([x]) for x in pokemon["moves"]],
-                    pokemon_others_state,
-                ]
+                ).float()
+                pokemon_state = torch.cat(
+                    [
+                        torch.tensor([pokemon["species"]]),
+                        torch.tensor([pokemon["item"]]),
+                        torch.tensor([pokemon["ability"]]),
+                        *[torch.tensor([x]) for x in pokemon["possible_abilities"]],
+                        *[torch.tensor([x]) for x in pokemon["moves"]],
+                        pokemon_others_state,
+                    ]
+                )
                 # Ensures active Pokemon is always in the first slot of the team
                 if pokemon["active"]:
-                    teams[key] = pokemon_state + teams[key]
+                    teams[key].insert(0, pokemon_state)
                 else:
-                    teams[key] = teams[key] + pokemon_state
-        return [
-            *teams["player_team"],
-            player_state,
-            *teams["opponent_team"],
-            opponent_state,
-            battle_state,
-        ]
+                    teams[key].append(pokemon_state)
+            teams[key] = torch.cat(teams[key])
+        return torch.cat(
+            [
+                teams["player_team"],
+                player_state,
+                teams["opponent_team"],
+                opponent_state,
+                battle_state,
+            ]
+        )
+
+    def get_state_lengths(self):
+        state = self.create_empty_state_vector()
+        self.state_length_dict["battle_state"] = torch.cat(
+            [state["battle"]["weather"], state["battle"]["fields"]]
+        ).shape[0]
+        self.state_length_dict["team_state"] = torch.cat(
+            [
+                state["player_team"]["side_conditions"],
+                torch.tensor([state["player_team"]["can_dynamax"]]),
+                torch.tensor([state["player_team"]["dynamax_turns_left"]]),
+            ]
+        ).shape[0]
+        pokemon = state["player_team"]["pokemon"][0]
+        self.state_length_dict["pokemon_state"] = torch.cat(
+            [
+                torch.tensor([pokemon["species"]]),
+                torch.tensor([pokemon["item"]]),
+                torch.tensor([pokemon["ability"]]),
+                *[torch.tensor([x]) for x in pokemon["possible_abilities"]],
+                *[torch.tensor([x]) for x in pokemon["moves"]],
+            ]
+        ).shape[0]
+        self.state_length_dict["pokemon_others_state"] = torch.cat(
+            [
+                pokemon["type"],
+                pokemon["effects"],
+                pokemon["status"],
+                torch.tensor(pokemon["base_stats"]),
+                torch.tensor(pokemon["stat_boosts"]),
+                torch.tensor(pokemon["moves_pp"]),
+                torch.tensor([pokemon["level"]]),
+                torch.tensor([pokemon["health"]]),
+                torch.tensor([pokemon["protect_counter"]]),
+                torch.tensor([pokemon["status_counter"]]),
+                torch.tensor([pokemon["fainted"]]),
+                torch.tensor([pokemon["active"]]),
+                torch.tensor([pokemon["first_turn"]]),
+                torch.tensor([pokemon["must_recharge"]]),
+                torch.tensor([pokemon["preparing"]]),
+            ]
+        ).shape[0]
+        return self.state_length_dict
 
     def embed_battle(self, battle):
         """
@@ -419,10 +469,10 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         # Convert State Dict to State Vector for model
         state = self.state_to_machine_readable_state(state)
         # Make Mask
-        mask = self.make_mask(battle)
+        self.mask = self.make_mask(battle)
 
         # Return State
-        return state + [mask]
+        return torch.cat([state, self.mask], dim=-1)
 
     def compute_reward(self, battle) -> float:
         return self.reward_computing_helper(
@@ -431,9 +481,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
 
     def make_mask(self, battle):
         """
-        TF 2.0 does not have masking in the softmax function.
-        This is added in a later version.
-        So we instead add a large negative value to the indices that
+        We add a large negative value to the indices that
         we want to mask. That way after softmax, the value will still
         be super low.
         """
@@ -471,7 +519,10 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 mask.append(0)
             else:
                 mask.append(-1e9)
-        return np.array(mask, dtype="float32")
+        return torch.tensor(mask).float()
+
+    def get_action_mask(self):
+        return self.mask
 
 class FullStatePlayerTesting(FullStatePlayer):
     def __init__(self, model, *args, **kwargs):

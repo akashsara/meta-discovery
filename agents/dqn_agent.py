@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # https://github.com/hsahovic/poke-env/blob/master/examples/rl_with_open_ai_gym_wrapper.py
 import numpy as np
+import torch
 
 from poke_env.player.env_player import Gen8EnvSinglePlayer
 
@@ -38,13 +39,13 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
         self.mask = self.make_mask(battle)
 
         # Final vector with 10 components
-        return np.concatenate(
+        return torch.cat(
             [
-                moves_base_power,
-                moves_dmg_multiplier,
-                [remaining_mon_team, remaining_mon_opponent],
-            ]
-        )
+                torch.tensor(moves_base_power),
+                torch.tensor(moves_dmg_multiplier),
+                torch.tensor([remaining_mon_team, remaining_mon_opponent]),
+            ], dim=-1
+        ).float()
 
     def compute_reward(self, battle) -> float:
         return self.reward_computing_helper(
@@ -89,7 +90,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
                 mask.append(0)
             else:
                 mask.append(-1e9)
-        return np.array(mask, dtype="float32")
+        return torch.tensor(mask).float()
 
 
 class SimpleRLPlayerTesting(SimpleRLPlayer):
