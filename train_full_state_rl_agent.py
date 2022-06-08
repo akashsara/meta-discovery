@@ -1,120 +1,109 @@
 # -*- coding: utf-8 -*-
 # https://github.com/hsahovic/poke-env/blob/master/examples/experimental-self-play.py
 
-import asyncio
 import os
 import numpy as np
 from poke_env.player.random_player import RandomPlayer
-from threading import Thread
 
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents.dqn_full_state_agent import FullStatePlayer
-import models
 
-import tensorflow as tf
-from tensorflow.keras.optimizers import Adam
 from poke_env.player_configuration import PlayerConfiguration
 
 from rl.agents.dqn import DQNAgent
-from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
+from rl.policy import (
+    ExponentialDecayEpsilonGreedyPolicy,
+    LinearDecayEpsilonGreedyPolicy,
+)
 from rl.memory import SequentialMemory
-from rl.core import Processor
 
-class DQNAgentModified(DQNAgent):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-    def forward(self, observation):
-        # Select an action.
-        state = self.memory.get_recent_state(observation)
-        # state -> state[0] due to our complex input
-        q_values = self.compute_q_values(state[0])
-        if self.training:
-            action = self.policy.select_action(q_values=q_values)
-        else:
-            action = self.test_policy.select_action(q_values=q_values)
-
-        # Book-keeping.
-        self.recent_observation = observation
-        self.recent_action = action
-
-        return action
-
-
-class MultiInputProcessor(Processor):
-    def __init__(self):
-        Processor.__init__(self)
-
-    def process_state_batch(self, state_batch):
-        final_state = []
-        if len(state_batch) == 1:
-            for items in zip(*state_batch):
-                final_state.append(items[0].reshape(1, -1))
-        else:
-            state_batch = np.squeeze(np.array(state_batch))
-            for items in zip(*state_batch):
-                final_state.append(np.stack(items, axis=0))
-        return final_state
-
-def create_model(n_actions, player, embedding_dim):
-    # Create Model
-    state = player.create_empty_state_vector()
-    state = player.state_to_machine_readable_state(state)
-    action_mask = np.array([0.0 for i in range(n_actions)], dtype="float32")
-    state += [action_mask]
-    max_values = player.lookup["max_values"]
-    model = models.FullStateModel(n_actions, state, embedding_dim, max_values)
-    processor = MultiInputProcessor()
-    return model, processor
+import models
+import torch
+import torch.nn as nn
 
 # This is the function that will be used to train the dqn
-def dqn_training(player, dqn, nb_steps):
-    dqn.fit(player, nb_steps=nb_steps, verbose=1, log_interval=LOG_INTERVAL)
+def model_training(player, model, nb_steps):
+    model.fit(player, num_training_steps=nb_steps)
     player.complete_current_battle()
 
 
-def dqn_evaluation(player, dqn, nb_episodes):
+def model_evaluation(player, model, nb_episodes):
     # Reset battle statistics
     player.reset_battles()
-    dqn.test(player, nb_episodes=nb_episodes, visualize=False, verbose=False)
+    model.test(player, num_episodes=nb_episodes)
 
     print(
-        "DQN Evaluation: %d victories out of %d episodes"
+        "Evaluation: %d victories out of %d episodes"
         % (player.n_won_battles, nb_episodes)
     )
 
+
 if __name__ == "__main__":
     # Config - Hyperparameters
-    NB_TRAINING_STEPS = 10000 
-    NB_EVALUATION_EPISODES = 100
-    MEMORY_SIZE = 10000
-    LOG_INTERVAL = 1000
-    TRAIN_INTERVAL = 1
-    TARGET_MODEL_UPDATE = 1000
     RANDOM_SEED = 42
-    embedding_dim = 128
+    NB_TRAINING_STEPS = 100000
+    NB_EVALUATION_EPISODES = 100
+
+    MODEL = models.BattleModel
+    MODEL_KWARGS = {
+        "pokemon_embedding_dim": 32,
+        "team_embedding_dim": 64,
+    }
+    memory_config = {
+        "capacity": 10000
+    }
+
+    OPTIMIZER = torch.optim.Adam
+    OPTIMIZER_KWARGS = {"lr": 0.00025}
+
+    POLICY = LinearDecayEpsilonGreedyPolicy
+    # POLICY = ExponentialDecayEpsilonGreedyPolicy
+    policy_config = {
+        "max_epsilon": 0.95,
+        "min_epsilon": 0.05,
+        # "epsilon_decay": 1000,
+        "max_steps": NB_TRAINING_STEPS
+    }
+
+    LOSS = nn.SmoothL1Loss
+    LOSS_KWARGS = {
+        "beta": 0.01,
+    }
+
+    training_config = {
+        "batch_size": 32,
+        "gamma": 0.9,
+        "use_soft_update": False,
+        "tau": 1000, # AKA Target Model Update
+        "train_interval": 1,
+        "log_interval": 1000,
+        "warmup_steps": 1000
+    }
 
     # Config - Versioning
-    training_opponent = "smart" # random, max, smart
-    experiment_name = f"FullState_DQN_Base_v1"
+    training_opponent = "max" # random, max, smart
+    experiment_name = f"New_FullState_DQN_Base_v1"
     hash_name = str(hash(experiment_name))[2:12]
 
-    # Config - Model Save Directory/Config Directory
+    # Config - Model Save Directory
+    model_dir = "models"
+
+    # Set random seed
+    np.random.seed(RANDOM_SEED)
+    _ = torch.manual_seed(RANDOM_SEED)
+
+    # Config - Model Save Directory/Config Directory + json info files
     model_dir = "models"
     config = {
         "create": True,
         "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
         "moves_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/moves.json",
-        "items_json": "https://raw.githubusercontent.com/itsjavi/showdown-data/main/dist/data/items.json",
+        "items_json": "https://raw.githubusercontent.com/akashsara/showdown-data/main/dist/data/items.json",
         "lookup_filename": "player_lookup_dicts.joblib",
     }
 
-    # Set random seed
-    tf.random.set_seed(RANDOM_SEED)
-    np.random.seed(RANDOM_SEED)
-
-    # Setup agent usernames for connecting to local showdown 
+    # Setup agent usernames for connecting to local showdown
     # This lets us train multiple agents while connecting to the same server
     training_agent = PlayerConfiguration(hash_name + "_P1", None)
     rand_player = PlayerConfiguration(hash_name + "_Rand", None)
@@ -122,21 +111,26 @@ if __name__ == "__main__":
     smax_player = PlayerConfiguration(hash_name + "_SMax", None)
 
     # Create Output Path
-    model_parent_dir = os.path.join(model_dir, experiment_name)
-    model_output_dir = os.path.join(model_parent_dir, experiment_name)
+    output_dir = os.path.join(model_dir, experiment_name)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     config["lookup_filename"] = os.path.join(
-        model_parent_dir, config["lookup_filename"]
+        output_dir, config["lookup_filename"]
     )
-    if not os.path.exists(model_output_dir):
-        os.makedirs(model_output_dir)
 
     # Create Player
     env_player = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50)
 
     # Setup opponents
-    random_agent = RandomPlayer(battle_format="gen8randombattle", player_configuration=rand_player)
-    max_damage_agent = MaxDamagePlayer(battle_format="gen8randombattle", player_configuration=max_player)
-    smart_max_damage_agent = SmartMaxDamagePlayer(battle_format="gen8randombattle", player_configuration=smax_player)
+    random_agent = RandomPlayer(
+        battle_format="gen8randombattle", player_configuration=rand_player
+    )
+    max_damage_agent = MaxDamagePlayer(
+        battle_format="gen8randombattle", player_configuration=max_player
+    )
+    smart_max_damage_agent = SmartMaxDamagePlayer(
+        battle_format="gen8randombattle", player_configuration=smax_player
+    )
     if training_opponent == "random":
         training_opponent = random_agent
     elif training_opponent == "max":
@@ -146,70 +140,57 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown training opponent.")
 
-    # Output dimension
-    n_actions = len(env_player.action_space)
+    # Grab some values from the environment to setup our model
+    MODEL_KWARGS["n_actions"] = len(env_player.action_space)
+    MODEL_KWARGS["state_length_dict"] = env_player.get_state_lengths()
+    MODEL_KWARGS["max_values_dict"] = env_player.lookup["max_values"]
 
-    # Create Model
-    model, processor = create_model(n_actions, env_player, embedding_dim)
-    print(model.summary())
+    # Setup memory
+    memory = SequentialMemory(**memory_config)
 
-    # Define Memory
-    memory = SequentialMemory(limit=MEMORY_SIZE, window_length=1)
+    # Simple Epsilon Greedy Policy
+    policy = POLICY(**policy_config)
 
-    # Define Policy
-    policy = LinearAnnealedPolicy(
-        EpsGreedyQPolicy(),
-        attr="eps",
-        value_max=1.0,
-        value_min=0.05,
-        value_test=0,
-        nb_steps=NB_TRAINING_STEPS,
-    )
-
-    # Define Agent
-    dqn = DQNAgentModified(
-        model=model,
-        processor=processor,
-        nb_actions=n_actions,
+    # Defining our DQN
+    dqn = DQNAgent(
         policy=policy,
         memory=memory,
-        nb_steps_warmup=1000,
-        gamma=0.5,
-        target_model_update=1,
-        delta_clip=0.01,
-        enable_double_dqn=True,
-        train_interval=TRAIN_INTERVAL
+        model=MODEL,
+        model_kwargs=MODEL_KWARGS,
+        optimizer=OPTIMIZER,
+        optimizer_kwargs=OPTIMIZER_KWARGS,
+        loss=LOSS,
+        loss_kwargs=LOSS_KWARGS,
+        **training_config
     )
-
-    # Compile Network
-    dqn.compile(Adam(learning_rate=0.0005), metrics=["mae"])
 
     # Train Model
     env_player.play_against(
-        env_algorithm=dqn_training,
+        env_algorithm=model_training,
         opponent=training_opponent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_steps": NB_TRAINING_STEPS},
+        env_algorithm_kwargs={"model": dqn, "nb_steps": NB_TRAINING_STEPS},
     )
-    model.save(model_output_dir)
+    dqn.save(output_dir)
 
     # Evaluation
-    print("Results against random player:")
-    env_player.play_against(
-        env_algorithm=dqn_evaluation,
-        opponent=random_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
-    )
+    if NB_EVALUATION_EPISODES > 0:
+        print("Results against random player:")
+        env_player.play_against(
+            env_algorithm=model_evaluation,
+            opponent=random_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
 
-    print("\nResults against max player:")
-    env_player.play_against(
-        env_algorithm=dqn_evaluation,
-        opponent=max_damage_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
-    )
+        print("\nResults against max player:")
+        env_player.play_against(
+            env_algorithm=model_evaluation,
+            opponent=max_damage_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
 
-    print("\nResults against smart max player:")
-    env_player.play_against(
-        env_algorithm=dqn_evaluation,
-        opponent=smart_max_damage_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
-    )
+        print("\nResults against smart max player:")
+        env_player.play_against(
+            env_algorithm=model_evaluation,
+            opponent=smart_max_damage_agent,
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+        )
