@@ -1,197 +1,240 @@
-import tensorflow as tf
-from tensorflow.keras import Input
-from tensorflow.keras.layers import Dense, Flatten, Embedding, Add, Flatten
-from tensorflow.keras.layers import Concatenate, Average, Softmax
-from tensorflow.keras.models import Sequential, Model
+import torch
+import torch.nn as nn
 import sys
 
 
-def SimpleModel(n_action):
-    """
-    Our embeddings have shape (1, 10), which affects our hidden layer
-    dimension and output dimension
-    Flattening resolves potential issues that would arise otherwise
-    """
-    model = Sequential()
-    model.add(Dense(128, activation="elu", input_shape=(1, 10)))
-    model.add(Flatten())
-    model.add(Dense(64, activation="elu"))
-    model.add(Dense(n_action, activation="linear"))
-    return model
+class SimpleModel(nn.Module):
+    def __init__(self, n_actions):
+        """
+        Our embeddings have shape (1, 10), which affects our hidden layer
+        dimension and output dimension
+        Flattening resolves potential issues that would arise otherwise
+        """
+        super(SimpleModel, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(10, 128),
+            nn.ELU(inplace=True),
+            nn.Linear(128, 64),
+            nn.ELU(inplace=True),
+            nn.Linear(64, n_actions),
+        )
+
+    def forward(self, state):
+        return self.model(state)
 
 
-def PokemonModel(pokemon_sample, embedding_dim, max_values):
-    #### Pokemon Model ####
-    # Define Inputs
-    pokemon_species = Input(shape=(1,), name="pokemon_species")
-    pokemon_item = Input(shape=(1,), name="pokemon_item")
-    pokemon_ability = Input(shape=(1,), name="pokemon_ability")
-    pokemon_possible_ability1 = Input(shape=(1,), name="pokemon_possible_ability1")
-    pokemon_possible_ability2 = Input(shape=(1,), name="pokemon_possible_ability2")
-    pokemon_possible_ability3 = Input(shape=(1,), name="pokemon_possible_ability3")
-    pokemon_move1 = Input(shape=(1,), name="pokemon_move1")
-    pokemon_move2 = Input(shape=(1,), name="pokemon_move2")
-    pokemon_move3 = Input(shape=(1,), name="pokemon_move3")
-    pokemon_move4 = Input(shape=(1,), name="pokemon_move4")
-    pokemon_other = Input(shape=pokemon_sample[-1].shape, name="pokemon_other")
-    # Define Embedding Layers
-    species_embedding = Embedding(
-        input_dim=max_values["species"],
-        output_dim=embedding_dim,
-        name="species_embedding",
-    )
-    item_embedding = Embedding(
-        input_dim=max_values["items"], output_dim=embedding_dim, name="item_embedding"
-    )
-    ability_embedding = Embedding(
-        input_dim=max_values["abilities"],
-        output_dim=embedding_dim,
-        name="ability_embedding",
-    )
-    move_embedding = Embedding(
-        input_dim=max_values["moves"], output_dim=embedding_dim, name="move_embedding"
-    )
-    # Get Embeddings
-    species_embedded = Flatten()(species_embedding(pokemon_species))
-    item_embedded = Flatten()(item_embedding(pokemon_item))
-    ability_embedded = Flatten()(ability_embedding(pokemon_ability))
-    # Average of Possible Abilities
-    possible_ability1_embedded = ability_embedding(pokemon_possible_ability1)
-    possible_ability2_embedded = ability_embedding(pokemon_possible_ability2)
-    possible_ability3_embedded = ability_embedding(pokemon_possible_ability3)
-    possible_abilities_embedded = Average()(
-        [
-            possible_ability1_embedded,
-            possible_ability2_embedded,
-            possible_ability3_embedded,
-        ]
-    )
-    possible_abilities_embedded = Flatten()(possible_abilities_embedded)
-    # Average Embedding of 4 Moves
-    move1_embedded = move_embedding(pokemon_move1)
-    move2_embedded = move_embedding(pokemon_move2)
-    move3_embedded = move_embedding(pokemon_move3)
-    move4_embedded = move_embedding(pokemon_move4)
-    moves_embedded = Average()(
-        [move1_embedded, move2_embedded, move3_embedded, move4_embedded]
-    )
-    moves_embedded = Flatten()(moves_embedded)
-    # Concatenate all Vectors
-    pokemon_embedded = Concatenate()(
-        [
-            species_embedded,
-            item_embedded,
-            ability_embedded,
-            possible_abilities_embedded,
-            moves_embedded,
-            pokemon_other,
-        ]
-    )
-    pokemon_processed = Dense(embedding_dim, activation="relu", name="pokemon_fc")(
-        pokemon_embedded
-    )
-    pokemon_model = Model(
-        inputs=[
-            pokemon_species,
-            pokemon_item,
-            pokemon_ability,
-            pokemon_possible_ability1,
-            pokemon_possible_ability2,
-            pokemon_possible_ability3,
-            pokemon_move1,
-            pokemon_move2,
-            pokemon_move3,
-            pokemon_move4,
-            pokemon_other,
-        ],
-        outputs=pokemon_processed,
-    )
-    return pokemon_model
+class PokemonModel(nn.Module):
+    def __init__(self, embedding_dim, max_values, pokemon_others_size):
+        super(PokemonModel, self).__init__()
+        # Define Embedding Layers
+        # Input: (batch_size, 1)
+        # Output: (batch_size, 1, embedding_dim)
+        self.species_embedding = nn.Embedding(
+            num_embeddings=max_values["species"],
+            embedding_dim=embedding_dim,
+        )
+        self.item_embedding = nn.Embedding(
+            num_embeddings=max_values["items"],
+            embedding_dim=embedding_dim,
+        )
+        self.ability_embedding = nn.Embedding(
+            num_embeddings=max_values["abilities"],
+            embedding_dim=embedding_dim,
+        )
+        self.move_embedding = nn.Embedding(
+            num_embeddings=max_values["moves"],
+            embedding_dim=embedding_dim,
+        )
+        # Final embedding dim =
+        # embedding_dim * num_things_to_get_embeddings_for
+        # This number is = 5
+        # 1 species, 1 item, 1 ability, 1 average ability, 1 average move
+        in_features = (embedding_dim * 5) + pokemon_others_size
+        self.model = nn.Linear(in_features=in_features, out_features=embedding_dim)
+
+    def forward(self, state):
+        # First dimension is batch size
+        # First 10 vectors = things we need embeddings for
+        # Rest is concatenated before passing through the dense layer
+        pokemon_state = state[:, :10].int()
+        pokemon_others_state = state[:, 10:]
+        # Define Inputs
+        pokemon_species, pokemon_item, pokemon_ability, pokemon_possible_ability1, pokemon_possible_ability2, pokemon_possible_ability3, pokemon_move1, pokemon_move2, pokemon_move3, pokemon_move4 = torch.chunk(pokemon_state, chunks=10, dim=-1)
+
+        # Get Embeddings: (batch_size, embedding_dim)
+        species_embedded = self.species_embedding(pokemon_species).squeeze(1)
+        item_embedded = self.item_embedding(pokemon_item).squeeze(1)
+        ability_embedded = self.ability_embedding(pokemon_ability).squeeze(1)
+
+        # Average of Possible Abilities: (batch_size, embedding_dim)
+        possible_ability1_embedded = self.ability_embedding(pokemon_possible_ability1)
+        possible_ability2_embedded = self.ability_embedding(pokemon_possible_ability2)
+        possible_ability3_embedded = self.ability_embedding(pokemon_possible_ability3)
+        average_abilities_embedded = torch.stack(
+            [
+                possible_ability1_embedded,
+                possible_ability2_embedded,
+                possible_ability3_embedded,
+            ]
+        ).mean(dim=0).squeeze(1)
+
+        # Average Embedding of 4 Moves: (batch_size, embedding_dim)
+        move1_embedded = self.move_embedding(pokemon_move1)
+        move2_embedded = self.move_embedding(pokemon_move2)
+        move3_embedded = self.move_embedding(pokemon_move3)
+        move4_embedded = self.move_embedding(pokemon_move4)
+        average_moves_embedded = torch.stack(
+            [
+                move1_embedded,
+                move2_embedded,
+                move3_embedded,
+                move4_embedded,
+            ]
+        ).mean(dim=0).squeeze(1)
+
+        # Concatenate all Vectors: (batch_size, embedding_dim * 5 + other_dim)
+        pokemon_embedded = torch.cat(
+            [
+                species_embedded,
+                item_embedded,
+                ability_embedded,
+                average_abilities_embedded,
+                average_moves_embedded,
+                pokemon_others_state,
+            ], dim=1
+        )
+        # Pass through model: (batch_size, embedding_dim)
+        return self.model(pokemon_embedded).relu()
 
 
-def TeamModel(pokemon_model, embedding_dim, team_sample):
-    # Pokemon Team Embedding
-    pokemon_inputs = []
-    for i in range(6):
-        single_pokemon = []
-        for model_input in pokemon_model.inputs:
-            name = f"pokemon_{i+1}_{model_input.name.split(':')[0]}"
-            single_pokemon.append(Input(shape=model_input.shape[1:], name=name))
-        pokemon_inputs.append(single_pokemon)
-    pokemon = [pokemon_model(pokemon_input) for pokemon_input in pokemon_inputs]
-    team_pokemon = Concatenate()(pokemon)
-    team_pokemon_embedding = Dense(embedding_dim, activation="relu")(team_pokemon)
-    # Active Pokemon's Embedding
-    active_pokemon_embedding = pokemon[0]
-    # Team (Side) Information/Conditions
-    team_inputs = Input(shape=team_sample.shape, name="team_conditions")
-    # Concatenate
-    team_embedded = Concatenate()(
-        [team_pokemon_embedding, active_pokemon_embedding, team_inputs]
-    )
-    # Create Model
-    team_model = Model(inputs=[pokemon_inputs, team_inputs], outputs=[team_embedded])
+class TeamModel(nn.Module):
+    def __init__(self, embedding_dim, pokemon_embedding_dim, team_size):
+        super(TeamModel, self).__init__()
+        # In the paper they use a MaxPool before passing the vector to
+        # the layer but there's no information on the specifics of it.
+        # So I'm just doing a concat before passing it to the linear layer.
+        self.pokemon_team_embedding = nn.Linear(
+            in_features=6 * pokemon_embedding_dim, out_features=embedding_dim
+        )
 
-    return team_model
+        # Input features =
+        # dim(pokemon_team_embedded) +
+        # dim(active_pokemon_embedded) +
+        # dim(team_conditions)
+        in_features = embedding_dim + pokemon_embedding_dim + team_size
+        self.model = nn.Linear(in_features=in_features, out_features=embedding_dim)
 
+    def forward(self, pokemon, team_conditions):
+        # pokemon is a list of 6 tensors
+        # [t1, t2, t3, t4, t5, t6]
+        # Where each tensor is (batch_size, pokemon_embedding_dim)
+        active_pokemon_embedded = pokemon[0]
+        pokemon = torch.cat([*pokemon], dim=-1)
 
-def BattleModel(team_model, n_actions, battle_sample):
-    # Player Team Embedding
-    player_team_inputs = []
-    for model_input in team_model.inputs:
-        name = f"player_{model_input.name.split(':')[0]}"
-        player_team_inputs.append(Input(shape=model_input.shape[1:], name=name))
-    player_team = team_model(player_team_inputs)
-    # Opponent Team Embedding
-    opponent_team_inputs = []
-    for model_input in team_model.inputs:
-        name = f"opponent_{model_input.name.split(':')[0]}"
-        opponent_team_inputs.append(Input(shape=model_input.shape[1:], name=name))
-    opponent_team = team_model(opponent_team_inputs)
-    # Battle Information (Input) - Weather etc.
-    battle_inputs = Input(shape=battle_sample.shape, name="battle_conditions")
-    # Concatenate
-    battle_information = Concatenate()([player_team, opponent_team, battle_inputs])
-    # Battle Embedding - Get the final embedding of the entire battle
-    battle_embedding = Dense(n_actions)(battle_information)
-    # TODO: Concat battle embedding with vectors for each action.
-    # TODO: Concat each action-specific vector so we have (22, len)
-    # TODO: Apply Masked Softmax. We should get 
-    # Create Mask for Invalid Actions
-    mask = Input(shape=((n_actions)), name="action_mask")
-    # Apply Mask 
-    masked_outputs = Add()([battle_embedding, mask])
-    # Softmax
-    predictions = Softmax()(masked_outputs)
-    # Create Model
-    battle_model = Model(
-        inputs=[player_team_inputs, opponent_team_inputs, battle_inputs, mask],
-        outputs=predictions,
-    )
-
-    return battle_model
+        pokemon_team_embedded = self.pokemon_team_embedding(pokemon).relu()
+        team_embedded = torch.cat(
+            [pokemon_team_embedded, active_pokemon_embedded, team_conditions],
+            dim=-1
+        )
+        return self.model(team_embedded).relu()
 
 
-def FullStateModel(n_actions, state, embedding_dim, max_values):
-    # State:
-    # [*player_pokemon1, *player_pokemon2, *player_pokemon3, *player_pokemon4, 
-    # *player_pokemon5, *player_pokemon6, player_state, *opponent_pokemon1, 
-    # *opponent_pokemon2, *opponent_pokemon3, *opponent_pokemon4, 
-    # *opponent_pokemon5, *opponent_pokemon6, opponent_state, battle_state, 
-    # action_mask]
-    # Where, each pokemon consists of 11 vectors:
-    # pokemon_species, pokemon_item, pokemon_ability, 
-    # pokemon_possible_ability1, pokemon_possible_ability2, 
-    # pokemon_possible_ability3, pokemon_move1, pokemon_move2, pokemon_move3, 
-    # pokemon_move4, pokemon_others_state
-    # This means we have a total of 12 pokemon * 11 = 132 
-    # 132 pokemon states + 2 team states + 1 battle state + 1 mask = 136
-    # TODO: At present we just predict all actions from a single state. We should be doing the action concatenation thing from the paper.
-    
-    # Here 0:11 = One Full Pokemon
-    pokemon_model = PokemonModel(state[0:11], embedding_dim, max_values)
-    # Player State = 3rd Last Vector
-    team_model = TeamModel(pokemon_model, embedding_dim, state[-3])
-    # Battle State = 2nd Last Vector
-    battle_model = BattleModel(team_model, n_actions, state[-2])
-    return battle_model
+class BattleModel(nn.Module):
+    def __init__(
+        self,
+        n_actions,
+        pokemon_embedding_dim,
+        team_embedding_dim,
+        max_values_dict,
+        state_length_dict
+    ):
+        """
+        State: 
+        [*player_pokemon1, *player_pokemon2, *player_pokemon3, 
+        *player_pokemon4, *player_pokemon5, *player_pokemon6, player_state, 
+        *opponent_pokemon1, *opponent_pokemon2, *opponent_pokemon3, 
+        *opponent_pokemon4, *opponent_pokemon5, *opponent_pokemon6, 
+        opponent_state, battle_state, action_mask]
+
+        Where, each pokemon consists of 11 vectors:
+        [pokemon_species, pokemon_item, pokemon_ability, 
+        pokemon_possible_ability1, pokemon_possible_ability2, 
+        pokemon_possible_ability3, pokemon_move1, pokemon_move2, 
+        pokemon_move3, pokemon_move4, pokemon_others_state]
+
+        In total: 
+        12 Pokemon * 11 Vectors + 2 Team Vectors + 1 Team Vector + 1 Mask
+        = State of size 136
+        """
+        super(BattleModel, self).__init__()
+        self.pokemon_per_team = 6
+        self.pokemon_state_length = state_length_dict["pokemon_state"] + state_length_dict["pokemon_others_state"]
+        self.all_pokemon_state_length = self.pokemon_state_length * self.pokemon_per_team
+        self.team_state_length = state_length_dict["team_state"]
+        self.battle_state_length = state_length_dict["battle_state"]
+
+        in_features = team_embedding_dim + team_embedding_dim + self.battle_state_length
+
+        self.pokemon_model = PokemonModel(
+            pokemon_embedding_dim, max_values_dict, state_length_dict["pokemon_others_state"]
+        )
+        self.team_model = TeamModel(
+            team_embedding_dim, pokemon_embedding_dim, state_length_dict["team_state"]
+        )
+        self.model = nn.Linear(in_features=in_features, out_features=n_actions)
+
+    def process(self, batch):
+        """
+        Since we have a complex input torch can't batch it up properly.
+        So we handle this ourselves.
+        """
+        if batch.ndim == 1:
+            return batch.unsqueeze(0)
+        else:
+            return batch
+
+    def forward(self, state):
+        # Convert state to (batch_size, state) if not already in it
+        state = self.process(state)
+        # Segment out the different parts of the state
+        # Applying this only on the 1st dimension (IE not the batch dim)
+        player_pokemon_state = state[:, 0:self.all_pokemon_state_length]
+        x = self.all_pokemon_state_length
+        player_state = state[:, x:x + self.team_state_length]
+        x = x + self.team_state_length
+        opponent_pokemon_state = state[:, x: x + self.all_pokemon_state_length]
+        x = x + self.all_pokemon_state_length
+        opponent_state = state[:, x:x + self.team_state_length]
+        x = x + self.team_state_length
+        battle_state = state[:, x: x + self.battle_state_length]
+        x = x + self.battle_state_length
+        action_mask = state[:, x:]
+
+        # Get embeddings for each individual pokemon
+        player_pokemon = []
+        opponent_pokemon = []
+        start = 0
+        end = start + self.pokemon_state_length
+        for i in range(6):
+            if i == 0:
+                # TODO: Active pokemon stuff
+                pass
+            pokemon = self.pokemon_model(player_pokemon_state[:, start:end])
+            player_pokemon.append(pokemon)
+
+            pokemon = self.pokemon_model(opponent_pokemon_state[:, start:end])
+            opponent_pokemon.append(pokemon)
+
+            start = end
+            end = start + self.pokemon_state_length
+
+        player_team = self.team_model(player_pokemon, player_state)
+        opponent_team = self.team_model(opponent_pokemon, opponent_state)
+
+        # TODO: Concat battle embedding with vectors for each action.
+        # TODO: Concat each action-specific vector so we have (22, len)
+        # TODO: At present we just predict all actions from a single state. We should be doing the action concatenation thing from the paper.
+        battle_state = torch.cat([player_team, opponent_team, battle_state], dim=-1)
+        actions = self.model(battle_state)
+        actions = actions + action_mask
+        return nn.functional.softmax(actions, dim=-1)
