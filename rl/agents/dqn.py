@@ -68,14 +68,14 @@ class DQNAgent:
         self.target_network.to(self.device)
 
     def fit(self, environment, num_training_steps):
-        state = torch.tensor(environment.reset()).float()
+        state = environment.reset()
         progress = tqdm(total=num_training_steps - self.iterations)
         all_rewards = []
         all_losses = []
         loss = None
         while self.iterations < num_training_steps:
             # Make action mask
-            action_mask = torch.tensor(environment.get_action_mask()).float()
+            action_mask = environment.get_action_mask()
             # Get q_values
             with torch.no_grad():
                 q_values = self.policy_network(state)
@@ -86,14 +86,12 @@ class DQNAgent:
 
             if done:
                 next_state = None
-            else:
-                next_state = torch.tensor(next_state).float()
 
             # Save transition in memory
             self.memory.push(state, action, next_state, reward, action_mask)
             # Reset environment if we're done
             if done:
-                state = torch.tensor(environment.reset()).float()
+                state = environment.reset()
             # Else just use the next state as the current state
             else:
                 state = next_state
@@ -215,19 +213,16 @@ class DQNAgent:
     def test(self, environment, num_episodes):
         for episode in tqdm(range(num_episodes)):
             done = False
-            state = torch.tensor(environment.reset()).float()
+            state = environment.reset()
             while not done:
-                action_mask = torch.tensor(environment.get_action_mask()).float()
+                action_mask = environment.get_action_mask()
                 # Get q_values
                 with torch.no_grad():
                     q_values = self.policy_network(state)
                 # Use policy
                 action = int(self.policy.greedy_action(q_values, action_mask))
                 # Play move
-                next_state, reward, done, info = environment.step(action)
-
-                if not done:
-                    next_state = torch.tensor(next_state).float()
+                state, reward, done, info = environment.step(action)
 
     def save(self, output_path):
         x = np.array(self.rewards)
