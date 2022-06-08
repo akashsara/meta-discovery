@@ -6,7 +6,9 @@ So small state vs random/max_damage/smart max_damage
 """
 import os
 import numpy as np
-import tensorflow as tf
+
+import torch
+import torch.nn as nn
 
 from agents.dqn_agent import SimpleRLPlayer
 from agents.max_damage_agent import MaxDamagePlayer
@@ -15,48 +17,77 @@ from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
 from rl.agents.dqn import DQNAgent
-from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
+from rl.policy import ExponentialDecayEpsilonGreedyPolicy, LinearDecayEpsilonGreedyPolicy
 from rl.memory import SequentialMemory
-from tensorflow.keras.optimizers import Adam
+
 import models
 
 # This is the function that will be used to train the dqn
-def dqn_training(player, dqn, nb_steps):
-    dqn.fit(player, nb_steps=nb_steps, verbose=1, log_interval=LOG_INTERVAL)
+def model_training(player, model, nb_steps):
+    model.fit(player, num_training_steps=nb_steps)
     player.complete_current_battle()
 
 
-def dqn_evaluation(player, dqn, nb_episodes):
+def model_evaluation(player, model, nb_episodes):
     # Reset battle statistics
     player.reset_battles()
-    dqn.test(player, nb_episodes=nb_episodes, visualize=False, verbose=False)
+    model.test(player, num_episodes=nb_episodes)
 
     print(
-        "DQN Evaluation: %d victories out of %d episodes"
+        "Evaluation: %d victories out of %d episodes"
         % (player.n_won_battles, nb_episodes)
     )
 
 if __name__ == "__main__":
     # Config - Hyperparameters
-    NB_TRAINING_STEPS = 10000 
-    NB_EVALUATION_EPISODES = 100
-    MEMORY_SIZE = 10000
-    LOG_INTERVAL = 1000
-    TRAIN_INTERVAL = 1
-    TARGET_MODEL_UPDATE = 1000
     RANDOM_SEED = 42
+    NB_TRAINING_STEPS = 50000
+    NB_EVALUATION_EPISODES = 100
+
+    MODEL = models.SimpleModel
+    MODEL_KWARGS = {}
+    memory_config = {
+        "capacity": 10000
+    }
+
+    OPTIMIZER = torch.optim.Adam
+    OPTIMIZER_KWARGS = {"lr": 0.00025}
+
+    POLICY = LinearDecayEpsilonGreedyPolicy
+    # POLICY = ExponentialDecayEpsilonGreedyPolicy
+    policy_config = {
+        "max_epsilon": 0.95,
+        "min_epsilon": 0.05,
+        # "epsilon_decay": 1000,
+        "max_steps": NB_TRAINING_STEPS
+    }
+
+    LOSS = nn.SmoothL1Loss
+    LOSS_KWARGS = {
+        "beta": 0.01,
+    }
+
+    training_config = {
+        "batch_size": 32,
+        "gamma": 0.9,
+        "use_soft_update": False,
+        "tau": 1000, # AKA Target Model Update
+        "train_interval": 1,
+        "log_interval": 1000,
+        "warmup_steps": 1000
+    }
 
     # Config - Versioning
-    training_opponent = "smart" # random, max, smart
-    experiment_name = f"Simple_DQN_Base_v1"
+    training_opponent = "max" # random, max, smart
+    experiment_name = f"AANew_Simple_DQN_Base_v1"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
     model_dir = "models"
 
     # Set random seed
-    tf.random.set_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
+    _ = torch.manual_seed(RANDOM_SEED)
 
     # Setup agent usernames for connecting to local showdown 
     # This lets us train multiple agents while connecting to the same server
@@ -66,10 +97,9 @@ if __name__ == "__main__":
     smax_player = PlayerConfiguration(hash_name + "_SMax", None)
 
     # Create Output Path
-    model_parent_dir = os.path.join(model_dir, experiment_name)
-    model_output_dir = os.path.join(model_parent_dir, experiment_name)
-    if not os.path.exists(model_output_dir):
-        os.makedirs(model_output_dir)
+    output_dir = os.path.join(model_dir, experiment_name)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # Setup player
     env_player = SimpleRLPlayer(battle_format="gen8randombattle", player_configuration=training_agent)
@@ -89,66 +119,53 @@ if __name__ == "__main__":
 
     # Output dimension
     n_actions = len(env_player.action_space)
-
-    # Define Model
-    model = models.SimpleModel(n_action=n_actions)
+    MODEL_KWARGS["n_actions"] = n_actions
 
     # Setup memory
-    memory = SequentialMemory(limit=MEMORY_SIZE, window_length=1)
+    memory = SequentialMemory(**memory_config)
 
     # Simple Epsilon Greedy Policy
-    policy = LinearAnnealedPolicy(
-        EpsGreedyQPolicy(),
-        attr="eps",
-        value_max=1.0,
-        value_min=0.05,
-        value_test=0,
-        nb_steps=NB_TRAINING_STEPS,
-    )
+    policy = POLICY(**policy_config)
 
     # Defining our DQN
     dqn = DQNAgent(
-        model=model,
-        nb_actions=len(env_player.action_space),
         policy=policy,
         memory=memory,
-        nb_steps_warmup=1000,
-        gamma=0.5,
-        delta_clip=0.01,
-        enable_double_dqn=True,
-        target_model_update=TARGET_MODEL_UPDATE,
-        train_interval=TRAIN_INTERVAL
+        model=MODEL,
+        model_kwargs=MODEL_KWARGS,
+        optimizer=OPTIMIZER,
+        optimizer_kwargs=OPTIMIZER_KWARGS,
+        loss=LOSS,
+        loss_kwargs=LOSS_KWARGS,
+        **training_config
     )
-
-    # Compile Model
-    dqn.compile(Adam(learning_rate=0.00025), metrics=["mae"])
 
     # Train Model
     env_player.play_against(
-        env_algorithm=dqn_training,
+        env_algorithm=model_training,
         opponent=training_opponent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_steps": NB_TRAINING_STEPS},
+        env_algorithm_kwargs={"model": dqn, "nb_steps": NB_TRAINING_STEPS},
     )
-    model.save(model_output_dir)
+    dqn.save(output_dir)
 
     # Evaluation
     print("Results against random player:")
     env_player.play_against(
-        env_algorithm=dqn_evaluation,
+        env_algorithm=model_evaluation,
         opponent=random_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
     )
 
     print("\nResults against max player:")
     env_player.play_against(
-        env_algorithm=dqn_evaluation,
+        env_algorithm=model_evaluation,
         opponent=max_damage_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
     )
 
     print("\nResults against smart max player:")
     env_player.play_against(
-        env_algorithm=dqn_evaluation,
+        env_algorithm=model_evaluation,
         opponent=smart_max_damage_agent,
-        env_algorithm_kwargs={"dqn": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
+        env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
     )
