@@ -119,7 +119,7 @@ if __name__ == "__main__":
     )
 
     # Create Player
-    env_player = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50)
+    env_player = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50, player_configuration=training_agent)
 
     # Setup opponents
     random_agent = RandomPlayer(

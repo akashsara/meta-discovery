@@ -111,7 +111,8 @@ if __name__ == "__main__":
 
     # Setup agent usernames for connecting to local showdown 
     # This lets us train multiple agents while connecting to the same server
-    training_agent = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent1 = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent2 = PlayerConfiguration(hash_name + "_P2", None)
     rand_player = PlayerConfiguration(hash_name + "_Rand", None)
     max_player = PlayerConfiguration(hash_name + "_Max", None)
     smax_player = PlayerConfiguration(hash_name + "_SMax", None)
@@ -122,8 +123,8 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
 
     # Setup player
-    player1 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
-    player2 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50)
+    player1 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50, player_configuration=training_agent1)
+    player2 = SimpleRLPlayer(battle_format="gen8randombattle", log_level=50, player_configuration=training_agent2)
 
     # Output dimension
     n_actions = len(player1.action_space)

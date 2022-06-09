@@ -42,7 +42,7 @@ if __name__ == "__main__":
     # Config - Hyperparameters
     RANDOM_SEED = 42
     NB_TRAINING_STEPS = 10000
-    NB_EVALUATION_EPISODES = 00
+    NB_EVALUATION_EPISODES = 100
 
     MODEL = models.SimpleModel
     MODEL_KWARGS = {}
