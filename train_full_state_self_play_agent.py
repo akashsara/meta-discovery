@@ -2,28 +2,28 @@
 # https://github.com/hsahovic/poke-env/blob/master/examples/experimental-self-play.py
 
 import asyncio
-from threading import Thread
+import json
 import os
-import numpy as np
+from threading import Thread
 
+import numpy as np
 import torch
 import torch.nn as nn
-
-from agents.dqn_full_state_agent import FullStatePlayer
-from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.utils import to_id_str
 
+import models
+from agents.dqn_full_state_agent import FullStatePlayer
+from agents.max_damage_agent import MaxDamagePlayer
+from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.dqn import DQNAgent
+from rl.memory import SequentialMemory
 from rl.policy import (
     ExponentialDecayEpsilonGreedyPolicy,
     LinearDecayEpsilonGreedyPolicy,
 )
-from rl.memory import SequentialMemory
 
-import models
 
 # This is the function that will be used to train the dqn
 def model_training(player, model, nb_steps):
@@ -41,6 +41,7 @@ def model_evaluation(player, model, nb_episodes):
         % (player.n_won_battles, nb_episodes)
     )
 
+
 async def launch_battles(player, opponent):
     battles_coroutine = asyncio.gather(
         player.send_challenges(
@@ -51,6 +52,7 @@ async def launch_battles(player, opponent):
         opponent.accept_challenges(opponent=to_id_str(player.username), n_challenges=1),
     )
     await battles_coroutine
+
 
 def env_algorithm_wrapper(env_algorithm, player, kwargs):
     env_algorithm(player, **kwargs)
@@ -67,7 +69,7 @@ def env_algorithm_wrapper(env_algorithm, player, kwargs):
 if __name__ == "__main__":
     # Config - Hyperparameters
     RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 100000
+    NB_TRAINING_STEPS = 10000
     NB_EVALUATION_EPISODES = 100
 
     MODEL = models.BattleModel
@@ -75,9 +77,7 @@ if __name__ == "__main__":
         "pokemon_embedding_dim": 32,
         "team_embedding_dim": 64,
     }
-    memory_config = {
-        "capacity": 10000
-    }
+    memory_config = {"capacity": 10000}
 
     OPTIMIZER = torch.optim.Adam
     OPTIMIZER_KWARGS = {"lr": 0.00025}
@@ -88,7 +88,7 @@ if __name__ == "__main__":
         "max_epsilon": 0.95,
         "min_epsilon": 0.05,
         # "epsilon_decay": 1000,
-        "max_steps": NB_TRAINING_STEPS
+        "max_steps": NB_TRAINING_STEPS,
     }
 
     LOSS = nn.SmoothL1Loss
@@ -100,15 +100,15 @@ if __name__ == "__main__":
         "batch_size": 32,
         "gamma": 0.9,
         "use_soft_update": False,
-        "tau": 1000, # AKA Target Model Update
+        "tau": 1000,  # AKA Target Model Update
         "train_interval": 1,
         "log_interval": 1000,
-        "warmup_steps": 1000
+        "warmup_steps": 1000,
     }
 
     # Config - Versioning
-    training_opponent = "max" # random, max, smart
-    experiment_name = f"New_FullState_DQN_Base_v1"
+    training_opponent = "max"  # random, max, smart
+    experiment_name = f"New_FullState_DQN_SelfPlay_v1"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -140,14 +140,22 @@ if __name__ == "__main__":
     output_dir = os.path.join(model_dir, experiment_name)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    config["lookup_filename"] = os.path.join(
-        output_dir, config["lookup_filename"]
-    )
+    config["lookup_filename"] = os.path.join(output_dir, config["lookup_filename"])
 
     # Setup player
-    player1 = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50, player_configuration=training_agent1)
+    player1 = FullStatePlayer(
+        config,
+        battle_format="gen8randombattle",
+        log_level=50,
+        player_configuration=training_agent1,
+    )
     config["create"] = False
-    player2 = FullStatePlayer(config, battle_format="gen8randombattle", log_level=50, player_configuration=training_agent2)
+    player2 = FullStatePlayer(
+        config,
+        battle_format="gen8randombattle",
+        log_level=50,
+        player_configuration=training_agent2,
+    )
 
     MODEL_KWARGS["n_actions"] = len(player1.action_space)
     MODEL_KWARGS["state_length_dict"] = player1.get_state_lengths()
@@ -169,7 +177,7 @@ if __name__ == "__main__":
         optimizer_kwargs=OPTIMIZER_KWARGS,
         loss=LOSS,
         loss_kwargs=LOSS_KWARGS,
-        **training_config
+        **training_config,
     )
 
     # Setup arguments to pass to the training function
@@ -200,7 +208,7 @@ if __name__ == "__main__":
 
     # Save model
     dqn.save(output_dir)
-    
+
     # Setup opponents
     random_agent = RandomPlayer(
         battle_format="gen8randombattle", player_configuration=rand_player
@@ -211,26 +219,36 @@ if __name__ == "__main__":
     smart_max_damage_agent = SmartMaxDamagePlayer(
         battle_format="gen8randombattle", player_configuration=smax_player
     )
-    
+
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
+        evaluation_results = {
+            "n_battles": NB_EVALUATION_EPISODES,
+        }
+
         print("Results against random player:")
         player1.play_against(
             env_algorithm=model_evaluation,
             opponent=random_agent,
-            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
         )
+        evaluation_results["vs_random"] = player1.n_won_battles
 
         print("\nResults against max player:")
         player1.play_against(
             env_algorithm=model_evaluation,
             opponent=max_damage_agent,
-            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
         )
+        evaluation_results["vs_max"] = player1.n_won_battles
 
         print("\nResults against smart max player:")
         player1.play_against(
             env_algorithm=model_evaluation,
             opponent=smart_max_damage_agent,
-            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES}
+            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
         )
+        evaluation_results["vs_smax"] = player1.n_won_battles
+
+        with open(os.path.join(output_dir, "results.json"), "w") as fp:
+            json.dump(evaluation_results, fp)
