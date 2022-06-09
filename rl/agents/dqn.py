@@ -28,6 +28,7 @@ class DQNAgent:
         train_interval=1,
         log_interval=100,
         warmup_steps=1000,
+        load_dict_path=None
     ):
         # Setup hyperparameters
         self.iterations = 0
@@ -67,12 +68,27 @@ class DQNAgent:
         self.policy_network.to(self.device)
         self.target_network.to(self.device)
 
+        # Setup some variables to track things
+        self.losses = []
+        self.rewards = []
+        self.battle_lengths = []
+
+        if load_dict_path:
+            print("Loading Model")
+            load_dict = torch.load(load_dict_path, map_location=self.device)
+            self.policy_network.load_state_dict(load_dict["model_state_dict"])
+            self.target_network.load_state_dict(load_dict["model_state_dict"])
+            self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
+            print("Load successful.")
+
     def fit(self, environment, num_training_steps):
         state = environment.reset()
         progress = tqdm(total=num_training_steps - self.iterations)
         all_rewards = []
         all_losses = []
+        all_battle_lengths = []
         loss = None
+        current_battle_length = 0
         while self.iterations < num_training_steps:
             # Make action mask
             action_mask = environment.get_action_mask()
@@ -91,10 +107,13 @@ class DQNAgent:
             self.memory.push(state, action, next_state, reward, action_mask)
             # Reset environment if we're done
             if done:
+                all_battle_lengths.append(current_battle_length)
+                current_battle_length = 0
                 state = environment.reset()
             # Else just use the next state as the current state
             else:
                 state = next_state
+                current_battle_length += 1
 
             # Train model on one batch of data
             if (self.iterations > self.warmup_steps) and (
@@ -127,6 +146,7 @@ class DQNAgent:
         progress.close()
         self.rewards = all_rewards
         self.losses = all_losses
+        self.battle_lengths = all_battle_lengths
 
     def train(self):
         # Only train if we have enough samples for a batch of data
@@ -229,11 +249,16 @@ class DQNAgent:
         average_rewards = x.cumsum() / (np.arange(x.size) + 1)
         x = np.array(self.losses)
         average_losses = x.cumsum() / (np.arange(x.size) + 1)
+        x = np.array(self.battle_lengths)
+        average_battle_length = x.cumsum() / (np.arange(x.size) + 1)
         graphics.plot_and_save_loss(
             average_rewards, "steps", "reward", os.path.join(output_path, "reward.jpg")
         )
         graphics.plot_and_save_loss(
             average_losses, "steps", "loss", os.path.join(output_path, "loss.jpg")
+        )
+        graphics.plot_and_save_loss(
+            average_battle_length, "episodes", "battle_length", os.path.join(output_path, "battle_length.jpg")
         )
         torch.save(
             {
@@ -241,4 +266,12 @@ class DQNAgent:
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
             os.path.join(output_path, "model.pt"),
+        )
+        torch.save(
+            {
+                "loss": self.losses,
+                "reward": self.rewards,
+                "battle_length": self.battle_lengths,
+            },
+            os.path.join(output_path, "statistics.pt")
         )
