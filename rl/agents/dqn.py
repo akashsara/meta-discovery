@@ -28,7 +28,7 @@ class DQNAgent:
         train_interval=1,
         log_interval=100,
         warmup_steps=1000,
-        load_dict_path=None
+        load_dict_path=None,
     ):
         # Setup hyperparameters
         self.iterations = 0
@@ -83,13 +83,14 @@ class DQNAgent:
 
     def fit(self, environment, num_training_steps):
         state = environment.reset()
-        progress = tqdm(total=num_training_steps - self.iterations)
+        self.policy_network.train()
+        self.target_network.eval()
         all_rewards = []
         all_losses = []
         all_battle_lengths = []
         loss = None
         current_battle_length = 0
-        while self.iterations < num_training_steps:
+        for i in tqdm(range(num_training_steps)):
             # Make action mask
             action_mask = environment.get_action_mask()
             # Get q_values
@@ -136,17 +137,15 @@ class DQNAgent:
 
             # Housekeeping
             self.iterations += 1
-            progress.update(1)
 
             # Log output to console
             if self.iterations % self.log_interval == 0:
                 tqdm.write(
-                    f"[{self.iterations}/{num_training_steps}] Average Reward: {np.mean(all_rewards)}\tAverage Loss: {np.mean(all_losses)}"
+                    f"[{i}/{num_training_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(all_rewards)}\tAverage Loss: {np.mean(all_losses)}"
                 )
-        progress.close()
-        self.rewards = all_rewards
-        self.losses = all_losses
-        self.battle_lengths = all_battle_lengths
+        self.rewards.extend(all_rewards)
+        self.losses.extend(all_losses)
+        self.battle_lengths.extend(all_battle_lengths)
 
     def train(self):
         # Only train if we have enough samples for a batch of data
@@ -231,6 +230,7 @@ class DQNAgent:
             )
 
     def test(self, environment, num_episodes):
+        self.policy_network.eval()
         for episode in tqdm(range(num_episodes)):
             done = False
             state = environment.reset()
@@ -258,7 +258,10 @@ class DQNAgent:
             average_losses, "steps", "loss", os.path.join(output_path, "loss.jpg")
         )
         graphics.plot_and_save_loss(
-            average_battle_length, "episodes", "battle_length", os.path.join(output_path, "battle_length.jpg")
+            average_battle_length,
+            "episodes",
+            "battle_length",
+            os.path.join(output_path, "battle_length.jpg"),
         )
         torch.save(
             {
@@ -273,5 +276,5 @@ class DQNAgent:
                 "reward": self.rewards,
                 "battle_length": self.battle_lengths,
             },
-            os.path.join(output_path, "statistics.pt")
+            os.path.join(output_path, "statistics.pt"),
         )
