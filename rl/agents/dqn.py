@@ -141,7 +141,7 @@ class DQNAgent:
             # Log output to console
             if self.iterations % self.log_interval == 0:
                 tqdm.write(
-                    f"[{i}/{num_training_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(all_rewards)}\tAverage Loss: {np.mean(all_losses)}"
+                    f"[{i + 1}/{num_training_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(all_rewards)}\tAverage Loss: {np.mean(all_losses)}"
                 )
         self.rewards.extend(all_rewards)
         self.losses.extend(all_losses)

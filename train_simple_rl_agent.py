@@ -43,32 +43,15 @@ def model_evaluation(player, model, nb_episodes):
 
 
 if __name__ == "__main__":
-    # Config - Hyperparameters
-    RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 10000
-    NB_EVALUATION_EPISODES = 100
+    # Config - Versioning
+    training_opponent = "max"  # random, max, smart
+    experiment_name = f"New_Simple_DQN_Base_v2"
+    hash_name = str(hash(experiment_name))[2:12]
 
-    MODEL = models.SimpleModel
-    MODEL_KWARGS = {}
-    memory_config = {"capacity": 10000}
+    # Config - Model Save Directory
+    model_dir = "models"
 
-    OPTIMIZER = torch.optim.Adam
-    OPTIMIZER_KWARGS = {"lr": 0.00025}
-
-    POLICY = LinearDecayEpsilonGreedyPolicy
-    # POLICY = ExponentialDecayEpsilonGreedyPolicy
-    policy_config = {
-        "max_epsilon": 0.95,
-        "min_epsilon": 0.05,
-        # "epsilon_decay": 1000,
-        "max_steps": NB_TRAINING_STEPS,
-    }
-
-    LOSS = nn.SmoothL1Loss
-    LOSS_KWARGS = {
-        "beta": 0.01,
-    }
-
+    # Config - Model Hyperparameters
     training_config = {
         "batch_size": 32,
         "gamma": 0.9,
@@ -79,13 +62,37 @@ if __name__ == "__main__":
         "warmup_steps": 1000,
     }
 
-    # Config - Versioning
-    training_opponent = "max"  # random, max, smart
-    experiment_name = f"New_Simple_DQN_Base_v1"
-    hash_name = str(hash(experiment_name))[2:12]
+    # Config - Training Hyperparameters
+    RANDOM_SEED = 42
+    NB_TRAINING_STEPS = 10000
+    VALIDATE_EVERY = 5000  # Run intermediate evaluation every N steps
+    NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
+    NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
-    # Config - Model Save Directory
-    model_dir = "models"
+    # Config = Model Setup
+    MODEL = models.SimpleModel
+    MODEL_KWARGS = {}
+    memory_config = {"capacity": 10000}
+
+    # Config - Policy Setup
+    POLICY = LinearDecayEpsilonGreedyPolicy
+    # POLICY = ExponentialDecayEpsilonGreedyPolicy
+    policy_config = {
+        "max_epsilon": 0.95,
+        "min_epsilon": 0.05,
+        # "epsilon_decay": 1000,
+        "max_steps": NB_TRAINING_STEPS,
+    }
+
+    # Config - Optimizer Setup
+    OPTIMIZER = torch.optim.Adam
+    OPTIMIZER_KWARGS = {"lr": 0.00025}
+    
+    # Config - Loss Setup
+    LOSS = nn.SmoothL1Loss
+    LOSS_KWARGS = {
+        "beta": 0.01,
+    }
 
     # Set random seed
     np.random.seed(RANDOM_SEED)
@@ -127,7 +134,7 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown training opponent.")
 
-    # Output dimension
+    # Grab some values from the environment to setup our model
     n_actions = len(env_player.action_space)
     MODEL_KWARGS["n_actions"] = n_actions
 
@@ -150,17 +157,68 @@ if __name__ == "__main__":
         **training_config,
     )
 
-    # Train Model
-    env_player.play_against(
-        env_algorithm=model_training,
-        opponent=training_opponent,
-        env_algorithm_kwargs={"model": dqn, "nb_steps": NB_TRAINING_STEPS},
-    )
+    evaluation_results = {}
+    epochs = NB_TRAINING_STEPS // VALIDATE_EVERY
+    for i in range(epochs):
+        # Train Model
+        env_player.play_against(
+            env_algorithm=model_training,
+            opponent=training_opponent,
+            env_algorithm_kwargs={"model": dqn, "nb_steps": VALIDATE_EVERY},
+        )
+        # Evaluate Model
+        # Works only if NB_VALIDATION_EPISODES is set
+        # And this isn't the last "epoch" [Since we do a full eval after this]
+        if NB_VALIDATION_EPISODES > 0 and i + 1 != epochs:
+            evaluation_results[f"validation_set_{i+1}"] = {
+                "n_battles": NB_VALIDATION_EPISODES,
+            }
+
+            print("Results against random player:")
+            env_player.play_against(
+                env_algorithm=model_evaluation,
+                opponent=random_agent,
+                env_algorithm_kwargs={
+                    "model": dqn,
+                    "nb_episodes": NB_VALIDATION_EPISODES,
+                },
+            )
+            evaluation_results[f"validation_set_{i+1}"][
+                "vs_random"
+            ] = env_player.n_won_battles
+
+            print("\nResults against max player:")
+            env_player.play_against(
+                env_algorithm=model_evaluation,
+                opponent=max_damage_agent,
+                env_algorithm_kwargs={
+                    "model": dqn,
+                    "nb_episodes": NB_VALIDATION_EPISODES,
+                },
+            )
+            evaluation_results[f"validation_set_{i+1}"][
+                "vs_max"
+            ] = env_player.n_won_battles
+
+            print("\nResults against smart max player:")
+            env_player.play_against(
+                env_algorithm=model_evaluation,
+                opponent=smart_max_damage_agent,
+                env_algorithm_kwargs={
+                    "model": dqn,
+                    "nb_episodes": NB_VALIDATION_EPISODES,
+                },
+            )
+            evaluation_results[f"validation_set_{i+1}"][
+                "vs_smax"
+            ] = env_player.n_won_battles
+
+    # Save Model
     dqn.save(output_dir)
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
-        evaluation_results = {
+        evaluation_results["final"] = {
             "n_battles": NB_EVALUATION_EPISODES,
         }
 
@@ -170,7 +228,7 @@ if __name__ == "__main__":
             opponent=random_agent,
             env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
         )
-        evaluation_results["vs_random"] = env_player.n_won_battles
+        evaluation_results["final"]["vs_random"] = env_player.n_won_battles
 
         print("\nResults against max player:")
         env_player.play_against(
@@ -178,7 +236,7 @@ if __name__ == "__main__":
             opponent=max_damage_agent,
             env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
         )
-        evaluation_results["vs_max"] = env_player.n_won_battles
+        evaluation_results["final"]["vs_max"] = env_player.n_won_battles
 
         print("\nResults against smart max player:")
         env_player.play_against(
@@ -186,7 +244,7 @@ if __name__ == "__main__":
             opponent=smart_max_damage_agent,
             env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
         )
-        evaluation_results["vs_smax"] = env_player.n_won_battles
+        evaluation_results["final"]["vs_smax"] = env_player.n_won_battles
 
-        with open(os.path.join(output_dir, "results.json"), "w") as fp:
-            json.dump(evaluation_results, fp)
+    with open(os.path.join(output_dir, "results.json"), "w") as fp:
+        json.dump(evaluation_results, fp)
