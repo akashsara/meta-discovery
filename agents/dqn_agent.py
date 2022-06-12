@@ -58,10 +58,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
     def make_mask(self, battle):
         mask = []
         for action in range(len(self.action_space)):
-            action = action - 1
-            if action == -1:
-                mask.append(0)
-            elif (
+            if (
                 action < 4
                 and action < len(battle.available_moves)
                 and not battle.force_switch

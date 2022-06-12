@@ -316,10 +316,6 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 index = key.value
             state["opponent_team"]["side_conditions"][index - 1] = 1
 
-        # Team: Dict[str: Pokemon]
-        player_team = [x for x in battle.team.values()]
-        opp_team = [x for x in battle.opponent_team.values()]
-
         # bool
         state["player_team"]["can_dynamax"] = battle.can_dynamax
         state["opponent_team"]["can_dynamax"] = battle.opponent_can_dynamax
@@ -487,10 +483,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         """
         mask = []
         for action in range(len(self.action_space)):
-            action = action - 1
-            if action == -1:
-                mask.append(0)
-            elif (
+            if (
                 action < 4
                 and action < len(battle.available_moves)
                 and not battle.force_switch
