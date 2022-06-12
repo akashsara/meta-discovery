@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import sys
 import joblib
+import copy
 
 from poke_env.player.env_player import Gen8EnvSinglePlayer
 from poke_env.environment.weather import Weather
@@ -135,7 +136,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 ),
                 "can_dynamax": False,
                 "dynamax_turns_left": 0,
-                "pokemon": [pokemon for i in range(6)],
+                "pokemon": [copy.deepcopy(pokemon) for i in range(6)],
             },
             "opponent_team": {
                 "side_conditions": torch.zeros(
@@ -143,7 +144,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 ),
                 "can_dynamax": False,
                 "dynamax_turns_left": 0,
-                "pokemon": [pokemon for i in range(6)],
+                "pokemon": [copy.deepcopy(pokemon) for i in range(6)],
             },
         }
 
