@@ -179,7 +179,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             "player_team": [],
             "opponent_team": [],
         }
-        active_pokemon_index = [0, 0] # player, opponent
+        active_pokemon_index = [0, 0]  # player, opponent
         for idx, (key, value) in enumerate(teams.items()):
             for i, pokemon in enumerate(state[key]["pokemon"]):
                 pokemon_others_state = torch.cat(
@@ -223,7 +223,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 teams["opponent_team"],
                 opponent_state,
                 battle_state,
-                torch.tensor(active_pokemon_index)
+                torch.tensor(active_pokemon_index),
             ]
         )
 
@@ -478,14 +478,12 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                     state[key]["pokemon"][i]["preparing"] = True
                 else:
                     state[key]["pokemon"][i]["preparing"] = False
-
         # Convert State Dict to State Vector for model
         state = self.state_to_machine_readable_state(state)
         # Make Mask
         self.mask = self.make_mask(battle)
-
         # Return State
-        return torch.cat([state, self.mask], dim=-1)
+        return state
 
     def compute_reward(self, battle) -> float:
         return self.reward_computing_helper(
@@ -533,6 +531,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
 
     def get_action_mask(self):
         return self.mask
+
 
 class FullStatePlayerTesting(FullStatePlayer):
     def __init__(self, model, *args, **kwargs):
