@@ -1,5 +1,5 @@
 import numpy as np
-import random
+import numpy.random as random
 
 
 class EpsilonGreedyPolicy:
@@ -20,9 +20,10 @@ class EpsilonGreedyPolicy:
     def select_action(self, q_values, action_mask=None):
         nb_actions = q_values.shape[0]
         if random.random() < self.calculate_epsilon():
-            action = np.random.randint(0, nb_actions)
-            while action_mask is not None and action_mask[action] < 0:
-                action = np.random.randint(0, nb_actions)
+            if action_mask is not None:
+                action = random.choice((action_mask == 0).nonzero().flatten())
+            else:
+                action = random.randint(0, nb_actions)
         else:
             if action_mask is not None:
                 q_values += action_mask
