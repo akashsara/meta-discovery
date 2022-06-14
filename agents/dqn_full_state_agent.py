@@ -6,7 +6,6 @@ import sys
 import joblib
 import copy
 
-from poke_env.player.env_player import Gen8EnvSinglePlayer
 from poke_env.environment.weather import Weather
 from poke_env.environment.field import Field
 from poke_env.environment.side_condition import SideCondition
@@ -15,6 +14,8 @@ from poke_env.environment.status import Status
 from poke_env.environment.pokemon_type import PokemonType
 from poke_env.utils import to_id_str
 import torch
+
+from poke_env.player.env_player import Gen8EnvSinglePlayer
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
@@ -37,7 +38,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         However the API returns it as SPIKES: <COUNT>. We convert these counts
         to separate values.
         """
-        Gen8EnvSinglePlayer.__init__(self, *args, **kwargs)
+        super(Gen8EnvSinglePlayer, self).__init__(*args, **kwargs)
         if config["create"]:
             # Pokedex
             df = pd.read_json(config["pokemon_json"]).T
@@ -136,6 +137,8 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 ),
                 "can_dynamax": False,
                 "dynamax_turns_left": 0,
+                "can_mega_evolve": False,
+                "can_z_move": False,
                 "pokemon": [copy.deepcopy(pokemon) for i in range(6)],
             },
             "opponent_team": {
@@ -144,6 +147,8 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 ),
                 "can_dynamax": False,
                 "dynamax_turns_left": 0,
+                "can_mega_evolve": False,
+                "can_z_move": False,
                 "pokemon": [copy.deepcopy(pokemon) for i in range(6)],
             },
         }
@@ -157,6 +162,8 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 state["player_team"]["side_conditions"],
                 torch.tensor([state["player_team"]["can_dynamax"]]),
                 torch.tensor([state["player_team"]["dynamax_turns_left"]]),
+                torch.tensor([state["player_team"]["can_mega_evolve"]]),
+                torch.tensor([state["player_team"]["can_z_move"]]),
             ]
         ).float()
         opponent_state = torch.cat(
@@ -164,14 +171,17 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 state["opponent_team"]["side_conditions"],
                 torch.tensor([state["opponent_team"]["can_dynamax"]]),
                 torch.tensor([state["opponent_team"]["dynamax_turns_left"]]),
+                torch.tensor([state["opponent_team"]["can_mega_evolve"]]),
+                torch.tensor([state["opponent_team"]["can_z_move"]]),
             ]
         ).float()
         teams = {
             "player_team": [],
             "opponent_team": [],
         }
-        for key, value in teams.items():
-            for pokemon in state[key]["pokemon"]:
+        active_pokemon_index = [0, 0] # player, opponent
+        for idx, (key, value) in enumerate(teams.items()):
+            for i, pokemon in enumerate(state[key]["pokemon"]):
                 pokemon_others_state = torch.cat(
                     [
                         pokemon["type"],
@@ -201,11 +211,10 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                         pokemon_others_state,
                     ]
                 )
-                # Ensures active Pokemon is always in the first slot of the team
+                teams[key].append(pokemon_state)
+                # Tracks the active Pokemon
                 if pokemon["active"]:
-                    teams[key].insert(0, pokemon_state)
-                else:
-                    teams[key].append(pokemon_state)
+                    active_pokemon_index[idx] = i
             teams[key] = torch.cat(teams[key])
         return torch.cat(
             [
@@ -214,6 +223,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 teams["opponent_team"],
                 opponent_state,
                 battle_state,
+                torch.tensor(active_pokemon_index)
             ]
         )
 
@@ -227,6 +237,8 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
                 state["player_team"]["side_conditions"],
                 torch.tensor([state["player_team"]["can_dynamax"]]),
                 torch.tensor([state["player_team"]["dynamax_turns_left"]]),
+                torch.tensor([state["player_team"]["can_mega_evolve"]]),
+                torch.tensor([state["player_team"]["can_z_move"]]),
             ]
         ).shape[0]
         pokemon = state["player_team"]["pokemon"][0]
@@ -318,6 +330,10 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             state["opponent_team"]["side_conditions"][index - 1] = 1
 
         # bool
+        state["player_team"]["can_mega_evolve"] = battle.can_mega_evolve
+        state["opponent_team"]["can_mega_evolve"] = battle.opponent_can_mega_evolve
+        state["player_team"]["can_z_move"] = battle.can_z_move
+        state["opponent_team"]["can_z_move"] = battle.opponent_can_z_move
         state["player_team"]["can_dynamax"] = battle.can_dynamax
         state["opponent_team"]["can_dynamax"] = battle.opponent_can_dynamax
         # Int or None
@@ -334,8 +350,8 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             "player_team": battle.team,
             "opponent_team": battle.opponent_team,
         }
-        for key, value in all_pokemon.items():
-            for i, (_, pokemon) in enumerate(value.items()):
+        for key, pokemon_team in all_pokemon.items():
+            for i, pokemon in enumerate(pokemon_team.values()):
                 # Pokemon Species - One Hot Encoding(num_pokemon)
                 # Visibility: Revealed
                 if pokemon.species:
