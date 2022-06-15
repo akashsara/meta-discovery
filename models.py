@@ -5,11 +5,6 @@ import sys
 
 class SimpleModel(nn.Module):
     def __init__(self, n_actions):
-        """
-        Our embeddings have shape (1, 10), which affects our hidden layer
-        dimension and output dimension
-        Flattening resolves potential issues that would arise otherwise
-        """
         super(SimpleModel, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(10, 128),
@@ -148,7 +143,10 @@ class TeamModel(nn.Module):
         # pokemon is a list of 6 tensors
         # [t1, t2, t3, t4, t5, t6]
         # Where each tensor is (batch_size, pokemon_embedding_dim)
-        active_pokemon_embedded = pokemon[active_pokemon_index]
+        batch_index = torch.arange(0, active_pokemon_index.shape[0])
+        active_pokemon_embedded = torch.stack(pokemon)[
+            active_pokemon_index, batch_index
+        ]
         pokemon = torch.cat([*pokemon], dim=-1)
 
         pokemon_team_embedded = self.pokemon_team_embedding(pokemon).relu()
@@ -207,7 +205,14 @@ class BattleModel(nn.Module):
         self.team_model = TeamModel(
             team_embedding_dim, pokemon_embedding_dim, state_length_dict["team_state"]
         )
-        self.model = nn.Linear(in_features=in_features, out_features=n_actions)
+        # (batch_size, in_features) -> (batch_size, n_actions)
+        self.battle_state_model = nn.Linear(in_features=in_features, out_features=n_actions)
+        # (batch_size, n_actions, pokemon_embedding_dim + 1) -> 
+        # (batch_size, n_actions, 1)
+        self.model = nn.Linear(in_features=1 + pokemon_embedding_dim, out_features=1)
+        # Save these variables for (potential) future use
+        self.pokemon_embedding_dim = pokemon_embedding_dim
+        self.team_embedding_dim = team_embedding_dim
 
     def process(self, batch):
         """
@@ -234,29 +239,44 @@ class BattleModel(nn.Module):
         x = x + self.team_state_length
         battle_state = state[:, x : x + self.battle_state_length]
         x = x + self.battle_state_length
-        player_active_pokemon_index = state[:, x].int()
+        player_active_pokemon_index = state[:, x].long()
         x = x + 1
-        opponent_active_pokemon_index = state[:, x].int()
+        opponent_active_pokemon_index = state[:, x].long()
 
         # Get embeddings for each individual pokemon
         player_pokemon = []
         opponent_pokemon = []
+        active_move1_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
+        active_move2_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
+        active_move3_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
+        active_move4_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
         start = 0
         end = start + self.pokemon_state_length
         for i in range(6):
-            if i == player_active_pokemon_index:
-                (
-                    pokemon,
-                    active_move1,
-                    active_move2,
-                    active_move3,
-                    active_move4,
-                ) = self.pokemon_model(
-                    player_pokemon_state[:, start:end], return_moveset=True
-                )
-            else:
-                pokemon = self.pokemon_model(player_pokemon_state[:, start:end])
+            (
+                pokemon,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+            ) = self.pokemon_model(
+                player_pokemon_state[:, start:end], return_moveset=True
+            )
             player_pokemon.append(pokemon)
+
+            # Keep track of the active moves
+            active_move1_batch[player_active_pokemon_index == i] = active_move1[
+                player_active_pokemon_index == i
+            ]
+            active_move2_batch[player_active_pokemon_index == i] = active_move2[
+                player_active_pokemon_index == i
+            ]
+            active_move3_batch[player_active_pokemon_index == i] = active_move3[
+                player_active_pokemon_index == i
+            ]
+            active_move4_batch[player_active_pokemon_index == i] = active_move4[
+                player_active_pokemon_index == i
+            ]
 
             pokemon = self.pokemon_model(opponent_pokemon_state[:, start:end])
             opponent_pokemon.append(pokemon)
@@ -275,5 +295,39 @@ class BattleModel(nn.Module):
         # TODO: Concat each action-specific vector so we have (22, len)
         # TODO: At present we just predict all actions from a single state. We should be doing the action concatenation thing from the paper.
         battle_state = torch.cat([player_team, opponent_team, battle_state], dim=-1)
-        actions = self.model(battle_state)
+        battle_state = self.battle_state_model(battle_state)
+        # 22 Actions:
+        # 0-4, 4-8, 8-12, 12-16 are for moves.
+        # Moves, Z-Moves, Mega Evolved Moves, Dynamaxed Moves
+        # 16-22 = 6 Switches
+        # TODO: Multiply/Add move vector by the relevant bonus (z/mega/dyna)
+        emphasis_vector = torch.stack(
+            [
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                player_pokemon[0],
+                player_pokemon[1],
+                player_pokemon[2],
+                player_pokemon[3],
+                player_pokemon[4],
+                player_pokemon[5],
+            ],
+            dim=1,
+        )
+        battle_state = torch.cat([battle_state.unsqueeze(-1), emphasis_vector], dim=-1)
+        actions = self.model(battle_state).squeeze(-1)
         return actions
