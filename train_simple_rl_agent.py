@@ -45,7 +45,7 @@ def model_evaluation(player, model, nb_episodes):
 if __name__ == "__main__":
     # Config - Versioning
     training_opponent = "max"  # random, max, smart
-    experiment_name = f"New_Simple_DQN_Base_v2"
+    experiment_name = f"New_Simple_DQN_Base_v1"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
     OPTIMIZER_KWARGS = {"lr": 0.00025}
-    
+
     # Config - Loss Setup
     LOSS = nn.SmoothL1Loss
     LOSS_KWARGS = {
@@ -112,7 +112,9 @@ if __name__ == "__main__":
 
     # Setup player
     env_player = SimpleRLPlayer(
-        battle_format="gen8randombattle", player_configuration=training_agent
+        battle_format="gen8randombattle",
+        player_configuration=training_agent,
+        log_level=30,
     )
 
     # Setup opponents

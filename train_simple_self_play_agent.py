@@ -137,12 +137,12 @@ if __name__ == "__main__":
     # Setup player
     player1 = SimpleRLPlayer(
         battle_format="gen8randombattle",
-        log_level=50,
+        log_level=30,
         player_configuration=training_agent1,
     )
     player2 = SimpleRLPlayer(
         battle_format="gen8randombattle",
-        log_level=50,
+        log_level=30,
         player_configuration=training_agent2,
     )
 

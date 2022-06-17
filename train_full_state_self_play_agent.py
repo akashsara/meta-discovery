@@ -152,14 +152,14 @@ if __name__ == "__main__":
     player1 = FullStatePlayer(
         config,
         battle_format="gen8randombattle",
-        log_level=50,
+        log_level=30,
         player_configuration=training_agent1,
     )
     config["create"] = False
     player2 = FullStatePlayer(
         config,
         battle_format="gen8randombattle",
-        log_level=50,
+        log_level=30,
         player_configuration=training_agent2,
     )
 
