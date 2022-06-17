@@ -3,14 +3,18 @@
 import numpy as np
 import torch
 
+import sys
+
+sys.path.append("./")
+from agents.env_player import Gen8EnvSinglePlayerFixed
 from poke_env.player.env_player import Gen8EnvSinglePlayer
 
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
-class SimpleRLPlayer(Gen8EnvSinglePlayer):
+class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
     def __init__(self, model=None, *args, **kwargs):
-        Gen8EnvSinglePlayer.__init__(self, *args, **kwargs)
+        super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
         self.model = model
 
     def embed_battle(self, battle):
@@ -18,7 +22,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
         # or is not available
         moves_base_power = -np.ones(4)
         moves_dmg_multiplier = np.ones(4)
-        for i, move in enumerate(battle.available_moves):
+        for i, move in enumerate(list(battle.active_pokemon.moves.values())):
             moves_base_power[i] = (
                 move.base_power / 100
             )  # Simple rescaling to facilitate learning
@@ -44,7 +48,8 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
                 torch.tensor(moves_base_power),
                 torch.tensor(moves_dmg_multiplier),
                 torch.tensor([remaining_mon_team, remaining_mon_opponent]),
-            ], dim=-1
+            ],
+            dim=-1,
         ).float()
 
     def compute_reward(self, battle) -> float:
@@ -55,38 +60,70 @@ class SimpleRLPlayer(Gen8EnvSinglePlayer):
     def get_action_mask(self):
         return self.mask
 
+    def skip_current_step(self):
+        return self.skip_step
+
     def make_mask(self, battle):
+        self.skip_step = False
         mask = []
+        moves = list(battle.active_pokemon.moves.values())
+        team = list(battle.team.values())
+        force_switch = (len(battle.available_switches) > 0) and battle.force_switch
+        available_move_ids = [x.id for x in battle.available_moves]
+        available_z_moves = [x.id for x in battle.active_pokemon.available_z_moves]
+
         for action in range(len(self.action_space)):
             if (
                 action < 4
-                and action < len(battle.available_moves)
-                and not battle.force_switch
+                and action < len(moves)
+                and not force_switch
+                and moves[action].id in available_move_ids
             ):
                 mask.append(0)
             elif (
-                not battle.force_switch
-                and battle.can_z_move
+                battle.can_z_move
                 and battle.active_pokemon
-                and 0 <= action - 4 < len(battle.active_pokemon.available_z_moves)
+                and 0 <= action - 4 < len(moves)
+                and not force_switch
+                and moves[action - 4].id in available_z_moves
             ):
                 mask.append(0)
             elif (
                 battle.can_mega_evolve
-                and 0 <= action - 8 < len(battle.available_moves)
-                and not battle.force_switch
+                and 0 <= action - 8 < len(moves)
+                and not force_switch
+                and moves[action - 8].id in available_move_ids
             ):
                 mask.append(0)
             elif (
                 battle.can_dynamax
-                and 0 <= action - 12 < len(battle.available_moves)
-                and not battle.force_switch
+                and 0 <= action - 12 < len(moves)
+                and not force_switch
+                and moves[action - 12].id in available_move_ids
             ):
                 mask.append(0)
-            elif 0 <= action - 16 < len(battle.available_switches):
+            elif (
+                not battle.trapped
+                and 0 <= action - 16 < len(team)
+                and team[action - 16] in battle.available_switches
+            ):
                 mask.append(0)
             else:
                 mask.append(-1e9)
+        # Special case for Struggle since it doesn't show up in battle.moves
+        if (
+            len(battle.available_moves) == 1
+            and battle.available_moves[0].id == "struggle"
+            and not force_switch
+        ):
+            mask[0] = 0
+
+        # Special case for the buggy scenario where there are
+        # no available moves nor switches
+        # Ref: https://github.com/hsahovic/poke-env/issues/295
+        # But also a generic catch-all for scenarios with no moves
+        if all([x == -1e9 for x in mask]):
+            self.skip_step = True
         return torch.tensor(mask).float()
 
 

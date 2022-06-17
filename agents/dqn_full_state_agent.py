@@ -15,11 +15,13 @@ from poke_env.environment.pokemon_type import PokemonType
 from poke_env.utils import to_id_str
 import torch
 
+sys.path.append("./")
+from agents.env_player import Gen8EnvSinglePlayerFixed
 from poke_env.player.env_player import Gen8EnvSinglePlayer
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
-class FullStatePlayer(Gen8EnvSinglePlayer):
+class FullStatePlayer(Gen8EnvSinglePlayerFixed):
     def __init__(self, config, *args, **kwargs):
         """
         Some Notes:
@@ -38,7 +40,7 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
         However the API returns it as SPIKES: <COUNT>. We convert these counts
         to separate values.
         """
-        super(Gen8EnvSinglePlayer, self).__init__(*args, **kwargs)
+        super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
         if config["create"]:
             # Pokedex
             df = pd.read_json(config["pokemon_json"]).T
@@ -472,8 +474,6 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
 
                 # Preparing For Attack (Dig/Bounce/etc.) - Boolean
                 # Visibility: All
-                # TODO: Change this back when the bug is fixed.
-                # state[key]["pokemon"][i]["preparing"] = pokemon.preparing
                 if pokemon.preparing:
                     state[key]["pokemon"][i]["preparing"] = True
                 else:
@@ -490,43 +490,71 @@ class FullStatePlayer(Gen8EnvSinglePlayer):
             battle, fainted_value=2, hp_value=1, victory_value=30
         )
 
+    def skip_current_step(self):
+        return self.skip_step
+
     def make_mask(self, battle):
-        """
-        We add a large negative value to the indices that
-        we want to mask. That way after softmax, the value will still
-        be super low.
-        """
+        self.skip_step = False
         mask = []
+        moves = list(battle.active_pokemon.moves.values())
+        team = list(battle.team.values())
+        force_switch = (len(battle.available_switches) > 0) and battle.force_switch
+        available_move_ids = [x.id for x in battle.available_moves]
+        available_z_moves = [x.id for x in battle.active_pokemon.available_z_moves]
+
         for action in range(len(self.action_space)):
             if (
                 action < 4
-                and action < len(battle.available_moves)
-                and not battle.force_switch
+                and action < len(moves)
+                and not force_switch
+                and moves[action].id in available_move_ids
             ):
                 mask.append(0)
             elif (
-                not battle.force_switch
-                and battle.can_z_move
+                battle.can_z_move
                 and battle.active_pokemon
-                and 0 <= action - 4 < len(battle.active_pokemon.available_z_moves)
+                and 0 <= action - 4 < len(moves)
+                and not force_switch
+                and moves[action - 4].id in available_z_moves
             ):
                 mask.append(0)
             elif (
                 battle.can_mega_evolve
-                and 0 <= action - 8 < len(battle.available_moves)
-                and not battle.force_switch
+                and 0 <= action - 8 < len(moves)
+                and not force_switch
+                and moves[action - 8].id in available_move_ids
             ):
                 mask.append(0)
             elif (
                 battle.can_dynamax
-                and 0 <= action - 12 < len(battle.available_moves)
-                and not battle.force_switch
+                and 0 <= action - 12 < len(moves)
+                and not force_switch
+                and moves[action - 12].id in available_move_ids
             ):
                 mask.append(0)
-            elif 0 <= action - 16 < len(battle.available_switches):
+            elif (
+                not battle.trapped
+                and 0 <= action - 16 < len(team)
+                and team[action - 16] in battle.available_switches
+            ):
                 mask.append(0)
             else:
                 mask.append(-1e9)
+        # Special case for Struggle since it doesn't show up in battle.moves
+        if (
+            len(battle.available_moves) == 1
+            and battle.available_moves[0].id == "struggle"
+            and not force_switch
+        ):
+            mask[0] = 0
+
+        # Special case for the buggy scenario where there are
+        # no available moves nor switches
+        # Ref: https://github.com/hsahovic/poke-env/issues/295
+        # But also a generic catch-all for scenarios with no moves
+        if all([x == -1e9 for x in mask]):
+            self.skip_step = True
+
         return torch.tensor(mask).float()
 
     def get_action_mask(self):

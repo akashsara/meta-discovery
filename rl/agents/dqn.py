@@ -93,19 +93,27 @@ class DQNAgent:
         for i in tqdm(range(num_training_steps)):
             # Make action mask
             action_mask = environment.get_action_mask()
-            # Get q_values
-            with torch.no_grad():
-                q_values = self.policy_network(state)
-            # Use policy
-            action = int(self.policy.select_action(q_values, action_mask))
+            # TODO: Remove this when the bug is fixed.
+            skip_step = environment.skip_current_step()
+            if skip_step:
+                print("Skipping step due to invalid action mask.")
+                action = 0
+            else:
+                # Get q_values
+                with torch.no_grad():
+                    q_values = self.policy_network(state)
+                # Use policy
+                action = int(self.policy.select_action(q_values, action_mask))
             # Play move
             next_state, reward, done, info = environment.step(action)
 
             if done:
                 next_state = None
 
-            # Save transition in memory
-            self.memory.push(state, action, next_state, reward, action_mask)
+            # TODO: Remove when the bug is fixed.
+            if not skip_step:
+                # Save transition in memory
+                self.memory.push(state, action, next_state, reward, action_mask)
             # Reset environment if we're done
             if done:
                 all_battle_lengths.append(current_battle_length)
@@ -129,11 +137,13 @@ class DQNAgent:
             elif self.iterations % self.tau == 0:
                 self.target_network.load_state_dict(self.policy_network.state_dict())
 
-            # Store metrics
-            all_rewards.append(reward)
-            if loss:
-                all_losses.append(loss)
-                loss = None
+            # TODO: Remove when the bug is fixed.
+            if not skip_step:
+                # Store metrics
+                all_rewards.append(reward)
+                if loss:
+                    all_losses.append(loss)
+                    loss = None
 
             # Housekeeping
             self.iterations += 1
