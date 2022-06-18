@@ -95,7 +95,6 @@ if __name__ == "__main__":
     }
 
     # Config - Model Save Directory/Config Directory + json info files
-    model_dir = "models"
     config = {
         "create": True,
         "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
