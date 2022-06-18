@@ -56,13 +56,13 @@ class Gen8EnvSinglePlayerFixed(Gen8EnvSinglePlayer):
 
         if action == -1:
             return ForfeitBattleOrder()
-        # Special case for Struggle since it's never a part of pokemon.moves
+        # Special case for moves that are never a part of pokemon.moves
+        # Example: Struggle, Locked into Outrage via Copycat
         elif (
             action < 4
             and action < len(moves)
             and not force_switch
             and len(available_move_ids) == 1
-            and available_move_ids[0] == "struggle"
         ):
             return self.create_order(battle.available_moves[0])
         elif (
