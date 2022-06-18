@@ -4,7 +4,6 @@ import numpy as np
 import torch
 
 import sys
-
 sys.path.append("./")
 from agents.env_player import Gen8EnvSinglePlayerFixed
 from poke_env.player.env_player import Gen8EnvSinglePlayer
@@ -48,8 +47,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
                 torch.tensor(moves_base_power),
                 torch.tensor(moves_dmg_multiplier),
                 torch.tensor([remaining_mon_team, remaining_mon_opponent]),
-            ],
-            dim=-1,
+            ], dim=-1
         ).float()
 
     def compute_reward(self, battle) -> float:
@@ -118,12 +116,46 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
         ):
             mask[0] = 0
 
-        # Special case for the buggy scenario where there are
+        # Special case for the buggy scenario where there are 
         # no available moves nor switches
         # Ref: https://github.com/hsahovic/poke-env/issues/295
         # But also a generic catch-all for scenarios with no moves
         if all([x == -1e9 for x in mask]):
             self.skip_step = True
+            print("ALL MASKED")
+            print(mask)
+            print(battle.won, battle.lost, battle.finished, battle.turn)
+            print(battle.force_switch, force_switch, battle.trapped)
+            print(battle.active_pokemon)
+            print(battle.team)
+            print(battle.available_switches)
+            print(battle.available_moves)
+            print(battle.active_pokemon.moves)
+        
+        if len(battle.available_moves) == 0 and len(battle.available_switches) == 0:
+            print("NO ACTIONS AVAILABLE")
+            print(mask)
+            print(battle.won, battle.lost, battle.finished, battle.turn)
+            print(battle.force_switch, force_switch, battle.trapped)
+            print(battle.active_pokemon)
+            print(battle.team)
+            print(battle.available_switches)
+            print(battle.available_moves)
+            print(battle.active_pokemon.moves)
+
+        if not force_switch and battle.force_switch:
+            print("FORCE SWITCH WITH NO SWITCHES")
+            print(mask)
+            print(battle.won, battle.lost, battle.finished, battle.turn)
+            print(battle.force_switch, force_switch, battle.trapped)
+            print(battle.active_pokemon)
+            print(battle.team)
+            print(battle.available_switches)
+            print(battle.available_moves)
+            print(battle.active_pokemon.moves)
+
+        if (len(battle.available_moves) == 0 and len(battle.available_switches) == 0) or all([x == -1e9 for x in mask]) or (not force_switch and battle.force_switch):
+            print("###" * 30)
         return torch.tensor(mask).float()
 
 

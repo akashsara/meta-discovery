@@ -55,7 +55,6 @@ if __name__ == "__main__":
     training_config = {
         "batch_size": 32,
         "gamma": 0.9,
-        "use_soft_update": False,
         "tau": 1000,  # AKA Target Model Update
         "train_interval": 1,
         "log_interval": 1000,
