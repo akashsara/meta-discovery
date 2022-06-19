@@ -249,7 +249,7 @@ class DQNAgent:
                 action_mask = environment.get_action_mask().to(self.device)
                 # Get q_values
                 with torch.no_grad():
-                    q_values = self.policy_network(state).to(self.device)
+                    q_values = self.policy_network(state.to(self.device))
                 # Use policy
                 action = int(self.policy.greedy_action(q_values, action_mask))
                 # Play move
