@@ -23,7 +23,6 @@ class DQNAgent:
         loss_kwargs={},
         batch_size=32,
         gamma=0.95,
-        use_soft_update=True,
         tau=1e-3,
         train_interval=1,
         log_interval=100,
@@ -33,8 +32,8 @@ class DQNAgent:
         # Setup hyperparameters
         self.iterations = 0
         self.gamma = gamma
-        self.use_soft_update = use_soft_update
         self.tau = tau
+        self.use_soft_update = self.tau < 1
         self.batch_size = batch_size
         self.train_interval = train_interval
         self.log_interval = log_interval
