@@ -73,6 +73,5 @@ class ExponentialDecayEpsilonGreedyPolicy(EpsilonGreedyPolicy):
         self.epsilon_decay = epsilon_decay
 
     def calculate_epsilon(self):
-        x = self.min_epsilon + (self.max_epsilon - self.min_epsilon)
-        x = x * np.exp(-1.0 * self.iterations / self.epsilon_decay)
+        x = self.min_epsilon + (self.max_epsilon - self.min_epsilon) * np.exp(-1.0 * self.iterations / self.epsilon_decay)
         return max(self.min_epsilon, x)
