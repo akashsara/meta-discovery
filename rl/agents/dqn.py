@@ -91,7 +91,7 @@ class DQNAgent:
         current_battle_length = 0
         for i in tqdm(range(num_training_steps)):
             # Make action mask
-            action_mask = environment.get_action_mask()
+            action_mask = environment.get_action_mask().to(self.device)
             # TODO: Remove this when the bug is fixed.
             skip_step = environment.skip_current_step()
             if skip_step:
@@ -100,7 +100,7 @@ class DQNAgent:
             else:
                 # Get q_values
                 with torch.no_grad():
-                    q_values = self.policy_network(state)
+                    q_values = self.policy_network(state.to(self.device))
                 # Use policy
                 action = int(self.policy.select_action(q_values, action_mask))
             # Play move
@@ -108,6 +108,8 @@ class DQNAgent:
 
             if done:
                 next_state = None
+            else:
+                next_state = next_state
 
             # TODO: Remove when the bug is fixed.
             if not skip_step:
@@ -139,9 +141,9 @@ class DQNAgent:
             # TODO: Remove when the bug is fixed.
             if not skip_step:
                 # Store metrics
-                all_rewards.append(reward)
+                all_rewards.append(reward.detach().cpu())
                 if loss:
-                    all_losses.append(loss)
+                    all_losses.append(loss.detach().cpu())
                     loss = None
 
             # Housekeeping
@@ -244,10 +246,10 @@ class DQNAgent:
             done = False
             state = environment.reset()
             while not done:
-                action_mask = environment.get_action_mask()
+                action_mask = environment.get_action_mask().to(self.device)
                 # Get q_values
                 with torch.no_grad():
-                    q_values = self.policy_network(state)
+                    q_values = self.policy_network(state).to(self.device)
                 # Use policy
                 action = int(self.policy.greedy_action(q_values, action_mask))
                 # Play move
