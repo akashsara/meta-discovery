@@ -141,7 +141,7 @@ class DQNAgent:
             # TODO: Remove when the bug is fixed.
             if not skip_step:
                 # Store metrics
-                all_rewards.append(reward.detach().cpu())
+                all_rewards.append(reward)
                 if loss:
                     all_losses.append(loss.detach().cpu())
                     loss = None

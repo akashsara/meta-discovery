@@ -21,6 +21,9 @@ class EpsilonGreedyPolicy:
         nb_actions = q_values.shape[0]
         if random.random() < self.calculate_epsilon():
             if action_mask is not None:
+                # Move mask to cpu since we're using numpy for action selection
+                # Torch doesn't have a native random.choice
+                action_mask = action_mask.cpu()
                 action = random.choice((action_mask == 0).nonzero().flatten())
             else:
                 action = random.randint(0, nb_actions)
