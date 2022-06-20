@@ -246,10 +246,10 @@ class BattleModel(nn.Module):
         # Get embeddings for each individual pokemon
         player_pokemon = []
         opponent_pokemon = []
-        active_move1_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
-        active_move2_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
-        active_move3_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
-        active_move4_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim)
+        active_move1_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move2_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move3_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move4_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
         start = 0
         end = start + self.pokemon_state_length
         for i in range(6):
@@ -291,9 +291,6 @@ class BattleModel(nn.Module):
             opponent_pokemon, opponent_state, opponent_active_pokemon_index
         )
 
-        # TODO: Concat battle embedding with vectors for each action.
-        # TODO: Concat each action-specific vector so we have (22, len)
-        # TODO: At present we just predict all actions from a single state. We should be doing the action concatenation thing from the paper.
         battle_state = torch.cat([player_team, opponent_team, battle_state], dim=-1)
         battle_state = self.battle_state_model(battle_state)
         # 22 Actions:
