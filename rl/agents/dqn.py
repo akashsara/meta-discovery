@@ -263,23 +263,23 @@ class DQNAgent:
         x = np.array(self.battle_lengths)
         average_battle_length = x.cumsum() / (np.arange(x.size) + 1)
         graphics.plot_and_save_loss(
-            average_rewards, "steps", "reward", os.path.join(output_path, "reward.jpg")
+            average_rewards, "steps", "reward", os.path.join(output_path, f"reward_{self.iterations}.jpg")
         )
         graphics.plot_and_save_loss(
-            average_losses, "steps", "loss", os.path.join(output_path, "loss.jpg")
+            average_losses, "steps", "loss", os.path.join(output_path, f"loss_{self.iterations}.jpg")
         )
         graphics.plot_and_save_loss(
             average_battle_length,
             "episodes",
             "battle_length",
-            os.path.join(output_path, "battle_length.jpg"),
+            os.path.join(output_path, f"battle_length_{self.iterations}.jpg"),
         )
         torch.save(
             {
                 "model_state_dict": self.policy_network.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
-            os.path.join(output_path, "model.pt"),
+            os.path.join(output_path, f"model_{self.iterations}.pt"),
         )
         torch.save(
             {
@@ -287,5 +287,5 @@ class DQNAgent:
                 "reward": self.rewards,
                 "battle_length": self.battle_lengths,
             },
-            os.path.join(output_path, "statistics.pt"),
+            os.path.join(output_path, f"statistics_{self.iterations}.pt"),
         )

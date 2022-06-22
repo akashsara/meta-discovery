@@ -167,6 +167,10 @@ if __name__ == "__main__":
             opponent=training_opponent,
             env_algorithm_kwargs={"model": dqn, "nb_steps": VALIDATE_EVERY},
         )
+
+        # Save Model
+        dqn.save(output_dir)
+        
         # Evaluate Model
         # Works only if NB_VALIDATION_EPISODES is set
         # And this isn't the last "epoch" [Since we do a full eval after this]
@@ -213,9 +217,6 @@ if __name__ == "__main__":
             evaluation_results[f"validation_set_{i+1}"][
                 "vs_smax"
             ] = env_player.n_won_battles
-
-    # Save Model
-    dqn.save(output_dir)
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:

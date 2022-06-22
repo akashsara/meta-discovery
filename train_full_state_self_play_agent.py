@@ -225,6 +225,9 @@ if __name__ == "__main__":
         t1.join()
         t2.join()
 
+        # Save model
+        dqn.save(output_dir)
+
         # Evaluate Model
         # Works only if NB_VALIDATION_EPISODES is set
         # And this isn't the last "epoch" [Since we do a full eval after this]
@@ -271,9 +274,6 @@ if __name__ == "__main__":
             evaluation_results[f"validation_set_{i+1}"][
                 "vs_smax"
             ] = player1.n_won_battles
-
-    # Save model
-    dqn.save(output_dir)
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
