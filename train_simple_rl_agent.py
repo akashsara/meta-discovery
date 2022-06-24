@@ -169,7 +169,7 @@ if __name__ == "__main__":
         )
 
         # Save Model
-        dqn.save(output_dir)
+        dqn.save(output_dir, reset_trackers=True, create_plots=False)
         
         # Evaluate Model
         # Works only if NB_VALIDATION_EPISODES is set
@@ -250,3 +250,21 @@ if __name__ == "__main__":
 
     with open(os.path.join(output_dir, "results.json"), "w") as fp:
         json.dump(evaluation_results, fp)
+
+    # Load back all the trackers to draw the final plots
+    all_losses = []
+    all_rewards = []
+    all_battle_lengths = []
+    for file in os.listdir(output_dir):
+        if "statistics_" in file:
+            x = torch.load(os.path.join(output_dir, file), map_location=dqn.device)
+            all_losses.append(x["loss"])
+            all_rewards.append(x["reward"])
+            all_battle_lengths.append(x["battle_length"])
+    all_losses = torch.cat(all_losses).flatten().numpy()
+    all_rewards = torch.cat(all_rewards).flatten().numpy()
+    all_battle_lengths = torch.cat(all_battle_lengths).flatten().numpy()
+    dqn.losses = all_losses
+    dqn.rewards = all_rewards
+    dqn.battle_lengths = all_battle_lengths
+    dqn.plot_and_save_metrics(output_dir, is_cumulative=True, reset_trackers=True, create_plots=True)

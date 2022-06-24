@@ -255,37 +255,59 @@ class DQNAgent:
                 # Play move
                 state, reward, done, info = environment.step(action)
 
-    def save(self, output_path):
-        x = np.array(self.rewards)
-        average_rewards = x.cumsum() / (np.arange(x.size) + 1)
-        x = np.array(self.losses)
-        average_losses = x.cumsum() / (np.arange(x.size) + 1)
-        x = np.array(self.battle_lengths)
-        average_battle_length = x.cumsum() / (np.arange(x.size) + 1)
-        graphics.plot_and_save_loss(
-            average_rewards, "steps", "reward", os.path.join(output_path, f"reward_{self.iterations}.jpg")
+    def plot_and_save_metrics(
+        self, output_path, is_cumulative=False, reset_trackers=False, create_plots=True
+    ):
+        if is_cumulative:
+            suffix = "final"
+        else:
+            suffix = str(self.iterations)
+        # Plot trackers
+        if create_plots:
+            x = np.array(self.rewards)
+            average_rewards = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.losses)
+            average_losses = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.battle_lengths)
+            average_battle_length = x.cumsum() / (np.arange(x.size) + 1)
+            graphics.plot_and_save_loss(
+                average_rewards,
+                "steps",
+                "reward",
+                os.path.join(output_path, f"reward_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                average_losses,
+                "steps",
+                "loss",
+                os.path.join(output_path, f"loss_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                average_battle_length,
+                "episodes",
+                "battle_length",
+                os.path.join(output_path, f"battle_length_{suffix}.jpg"),
+            )
+        # Save trackers
+        torch.save(
+            {
+                "loss": torch.tensor(self.losses),
+                "reward": torch.tensor(self.rewards),
+                "battle_length": torch.tensor(self.battle_lengths),
+            },
+            os.path.join(output_path, f"statistics_{suffix}.pt"),
         )
-        graphics.plot_and_save_loss(
-            average_losses, "steps", "loss", os.path.join(output_path, f"loss_{self.iterations}.jpg")
-        )
-        graphics.plot_and_save_loss(
-            average_battle_length,
-            "episodes",
-            "battle_length",
-            os.path.join(output_path, f"battle_length_{self.iterations}.jpg"),
-        )
+        if reset_trackers:
+            self.losses = []
+            self.rewards = []
+            self.battle_lengths = []
+
+    def save(self, output_path, reset_trackers=False, create_plots=True):
+        self.plot_and_save_metrics(output_path, reset_trackers=reset_trackers, create_plots=create_plots)
         torch.save(
             {
                 "model_state_dict": self.policy_network.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
             os.path.join(output_path, f"model_{self.iterations}.pt"),
-        )
-        torch.save(
-            {
-                "loss": self.losses,
-                "reward": self.rewards,
-                "battle_length": self.battle_lengths,
-            },
-            os.path.join(output_path, f"statistics_{self.iterations}.pt"),
         )
