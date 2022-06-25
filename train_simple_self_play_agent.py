@@ -180,7 +180,7 @@ if __name__ == "__main__":
     )
 
     evaluation_results = {}
-    epochs = NB_TRAINING_STEPS // VALIDATE_EVERY
+    epochs = min(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
     for i in range(epochs):
         # Setup arguments to pass to the training function
         p1_env_kwargs = {"model": dqn, "nb_steps": VALIDATE_EVERY}
@@ -301,9 +301,9 @@ if __name__ == "__main__":
             all_losses.append(x["loss"])
             all_rewards.append(x["reward"])
             all_battle_lengths.append(x["battle_length"])
-    all_losses = torch.cat(all_losses).flatten().numpy()
-    all_rewards = torch.cat(all_rewards).flatten().numpy()
-    all_battle_lengths = torch.cat(all_battle_lengths).flatten().numpy()
+    all_losses = torch.cat(all_losses).flatten().cpu().numpy()
+    all_rewards = torch.cat(all_rewards).flatten().cpu().numpy()
+    all_battle_lengths = torch.cat(all_battle_lengths).flatten().cpu().numpy()
     dqn.losses = all_losses
     dqn.rewards = all_rewards
     dqn.battle_lengths = all_battle_lengths
