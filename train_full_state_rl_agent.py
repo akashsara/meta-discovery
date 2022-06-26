@@ -171,7 +171,7 @@ if __name__ == "__main__":
     )
 
     evaluation_results = {}
-    epochs = min(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
+    epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
     for i in range(epochs):
         # Train Model
         env_player.play_against(
