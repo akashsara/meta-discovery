@@ -13,7 +13,7 @@ import torch.nn as nn
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
-import models
+from models import simple_models
 from agents.dqn_agent import SimpleRLPlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
     # Config = Model Setup
-    MODEL = models.SimpleModel
+    MODEL = simple_models.SimpleModel
     MODEL_KWARGS = {}
     memory_config = {"capacity": 10000}
 

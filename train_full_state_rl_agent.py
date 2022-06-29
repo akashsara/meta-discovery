@@ -10,7 +10,7 @@ import torch.nn as nn
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
-import models
+from models import full_state_models
 from agents.dqn_full_state_agent import FullStatePlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
     # Config = Model Setup
-    MODEL = models.BattleModel
+    MODEL = full_state_models.BattleModel
     MODEL_KWARGS = {
         "pokemon_embedding_dim": 32,
         "team_embedding_dim": 64,

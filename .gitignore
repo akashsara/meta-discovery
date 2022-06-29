@@ -1,5 +1,6 @@
 env/
-models/
+torch_env/
+trained/
 .vscode/
 __pycache__/
 pokemon_showdown_accounts.py
