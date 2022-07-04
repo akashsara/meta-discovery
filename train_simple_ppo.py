@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # Config - Model Hyperparameters
     training_config = {
         "batch_size": 32,
-        "log_interval": 500,
+        "log_interval": 1000,
         "gamma": 0.99,  # Discount Factor
         "lambda_": 0.95,  # GAE Parameter
         "clip_param": 0.2,  # Surrogate Clipping Parameter
@@ -58,9 +58,9 @@ if __name__ == "__main__":
 
     # Config - Training Hyperparameters
     RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 10000  # Total training steps
-    STEPS_PER_EPOCH = 1000 # Steps to gather before running PPO (train interval)
-    VALIDATE_EVERY = 5000  # Run intermediate evaluation every N steps
+    NB_TRAINING_STEPS = 100000  # Total training steps
+    STEPS_PER_EPOCH = 5000  # Steps to gather before running PPO (train interval)
+    VALIDATE_EVERY = 50000  # Run intermediate evaluation every N steps
     NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
-    OPTIMIZER_KWARGS = {"lr": 0.00025}
+    OPTIMIZER_KWARGS = {"lr": 1e-4}
 
     # Set random seed
     np.random.seed(RANDOM_SEED)
