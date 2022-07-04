@@ -13,8 +13,8 @@ import torch.nn as nn
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
-from models import simple_models
-from agents.dqn_agent import SimpleRLPlayer
+from models import full_state_models
+from agents.dqn_full_state_agent import FullStatePlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.ppo import PPOAgent
@@ -39,7 +39,7 @@ def model_evaluation(player, model, nb_episodes):
 if __name__ == "__main__":
     # Config - Versioning
     training_opponent = "random"  # random, max, smart
-    experiment_name = f"Simple_PPO_Base_v1"
+    experiment_name = f"FullState_PPO_Base_v1"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -58,20 +58,32 @@ if __name__ == "__main__":
 
     # Config - Training Hyperparameters
     RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 10000  # Total training steps
+    NB_TRAINING_STEPS = 10000 # Total training steps
     STEPS_PER_EPOCH = 1000 # Steps to gather before running PPO (train interval)
     VALIDATE_EVERY = 5000  # Run intermediate evaluation every N steps
-    NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
-    NB_EVALUATION_EPISODES = 1000  # Final Evaluation
+    NB_VALIDATION_EPISODES = 100 # Intermediate Evaluation
+    NB_EVALUATION_EPISODES = 1000 # Final Evaluation
 
     # Config = Model Setup
-    MODEL = simple_models.SimpleActorCriticModel
-    MODEL_KWARGS = {}
+    MODEL = full_state_models.ActorCriticBattleModel
+    MODEL_KWARGS = {
+        "pokemon_embedding_dim": 32,
+        "team_embedding_dim": 64,
+    }
     memory_config = {"batch_size": training_config["batch_size"]}
 
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
     OPTIMIZER_KWARGS = {"lr": 0.00025}
+
+    # Config - Model Save Directory/Config Directory + json info files
+    config = {
+        "create": True,
+        "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
+        "moves_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/moves.json",
+        "items_json": "https://raw.githubusercontent.com/akashsara/showdown-data/main/dist/data/items.json",
+        "lookup_filename": "player_lookup_dicts.joblib",
+    }
 
     # Set random seed
     np.random.seed(RANDOM_SEED)
@@ -88,12 +100,14 @@ if __name__ == "__main__":
     output_dir = os.path.join(model_dir, experiment_name)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    config["lookup_filename"] = os.path.join(output_dir, config["lookup_filename"])
 
-    # Setup player
-    env_player = SimpleRLPlayer(
+    # Create Player
+    env_player = FullStatePlayer(
+        config,
         battle_format="gen8randombattle",
-        player_configuration=training_agent,
         log_level=30,
+        player_configuration=training_agent,
     )
 
     # Setup opponents
@@ -116,8 +130,9 @@ if __name__ == "__main__":
         raise ValueError("Unknown training opponent.")
 
     # Grab some values from the environment to setup our model
-    n_actions = len(env_player.action_space)
-    MODEL_KWARGS["n_actions"] = n_actions
+    MODEL_KWARGS["n_actions"] = len(env_player.action_space)
+    MODEL_KWARGS["state_length_dict"] = env_player.get_state_lengths()
+    MODEL_KWARGS["max_values_dict"] = env_player.lookup["max_values"]
 
     # Setup memory
     memory = PPOMemory(**memory_config)

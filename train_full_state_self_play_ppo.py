@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-# https://github.com/hsahovic/poke-env/blob/master/examples/rl_with_open_ai_gym_wrapper.py
-"""
-used for training a simple RL agent.
-So small state vs random/max_damage/smart max_damage
-"""
+# https://github.com/hsahovic/poke-env/blob/master/examples/experimental-self-play.py
+
+import asyncio
 import json
 import os
+from threading import Thread
 
 import numpy as np
 import torch
 import torch.nn as nn
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
+from poke_env.utils import to_id_str
 
-from models import simple_models
-from agents.dqn_agent import SimpleRLPlayer
+from models import full_state_models
+from agents.dqn_full_state_agent import FullStatePlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.ppo import PPOAgent
@@ -36,10 +36,34 @@ def model_evaluation(player, model, nb_episodes):
     )
 
 
+async def launch_battles(player, opponent):
+    battles_coroutine = asyncio.gather(
+        player.send_challenges(
+            opponent=to_id_str(opponent.username),
+            n_challenges=1,
+            to_wait=opponent.logged_in,
+        ),
+        opponent.accept_challenges(opponent=to_id_str(player.username), n_challenges=1),
+    )
+    await battles_coroutine
+
+
+def env_algorithm_wrapper(env_algorithm, player, kwargs):
+    env_algorithm(player, **kwargs)
+
+    player._start_new_battle = False
+    while True:
+        try:
+            player.complete_current_battle()
+            player.reset()
+        except OSError:
+            break
+
+
 if __name__ == "__main__":
     # Config - Versioning
     training_opponent = "random"  # random, max, smart
-    experiment_name = f"Simple_PPO_Base_v1"
+    experiment_name = f"FullState_PPO_SelfPlay_v1"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -59,19 +83,31 @@ if __name__ == "__main__":
     # Config - Training Hyperparameters
     RANDOM_SEED = 42
     NB_TRAINING_STEPS = 10000  # Total training steps
-    STEPS_PER_EPOCH = 1000 # Steps to gather before running PPO (train interval)
+    STEPS_PER_EPOCH = 1000  # Steps to gather before running PPO (train interval)
     VALIDATE_EVERY = 5000  # Run intermediate evaluation every N steps
     NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
     # Config = Model Setup
-    MODEL = simple_models.SimpleActorCriticModel
-    MODEL_KWARGS = {}
+    MODEL = full_state_models.ActorCriticBattleModel
+    MODEL_KWARGS = {
+        "pokemon_embedding_dim": 32,
+        "team_embedding_dim": 64,
+    }
     memory_config = {"batch_size": training_config["batch_size"]}
 
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
     OPTIMIZER_KWARGS = {"lr": 0.00025}
+
+    # Config - Model Save Directory/Config Directory + json info files
+    config = {
+        "create": True,
+        "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
+        "moves_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/moves.json",
+        "items_json": "https://raw.githubusercontent.com/akashsara/showdown-data/main/dist/data/items.json",
+        "lookup_filename": "player_lookup_dicts.joblib",
+    }
 
     # Set random seed
     np.random.seed(RANDOM_SEED)
@@ -79,7 +115,8 @@ if __name__ == "__main__":
 
     # Setup agent usernames for connecting to local showdown
     # This lets us train multiple agents while connecting to the same server
-    training_agent = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent1 = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent2 = PlayerConfiguration(hash_name + "_P2", None)
     rand_player = PlayerConfiguration(hash_name + "_Rand", None)
     max_player = PlayerConfiguration(hash_name + "_Max", None)
     smax_player = PlayerConfiguration(hash_name + "_SMax", None)
@@ -90,10 +127,18 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
 
     # Setup player
-    env_player = SimpleRLPlayer(
+    player1 = FullStatePlayer(
+        config,
         battle_format="gen8randombattle",
-        player_configuration=training_agent,
         log_level=30,
+        player_configuration=training_agent1,
+    )
+    config["create"] = False
+    player2 = FullStatePlayer(
+        config,
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=training_agent2,
     )
 
     # Setup opponents
@@ -106,19 +151,12 @@ if __name__ == "__main__":
     smart_max_damage_agent = SmartMaxDamagePlayer(
         battle_format="gen8randombattle", player_configuration=smax_player
     )
-    if training_opponent == "random":
-        training_opponent = random_agent
-    elif training_opponent == "max":
-        training_opponent = max_damage_agent
-    elif training_opponent == "smart":
-        training_opponent = smart_max_damage_agent
-    else:
-        raise ValueError("Unknown training opponent.")
 
     # Grab some values from the environment to setup our model
-    n_actions = len(env_player.action_space)
-    MODEL_KWARGS["n_actions"] = n_actions
-
+    MODEL_KWARGS["n_actions"] = len(player1.action_space)
+    MODEL_KWARGS["state_length_dict"] = player1.get_state_lengths()
+    MODEL_KWARGS["max_values_dict"] = player1.lookup["max_values"]
+    
     # Setup memory
     memory = PPOMemory(**memory_config)
 
@@ -135,21 +173,43 @@ if __name__ == "__main__":
     evaluation_results = {}
     last_validated = 0
     while ppo.iterations < NB_TRAINING_STEPS:
-        # Train Model
-        # We train for VALIDATE_EVERY steps
-        # That is, VALIDATE_EVERY//STEPS_PER_EPOCH epochs
-        # Each of STEPS_PER_EPOCH steps
-        env_player.play_against(
-            env_algorithm=model_training,
-            opponent=training_opponent,
-            env_algorithm_kwargs={
-                "model": ppo,
-                "steps_per_epoch": STEPS_PER_EPOCH,
-                "num_epochs": 1,
-            },
-        )
+        # Setup arguments to pass to the training function
+        p1_env_kwargs = {
+            "model": ppo,
+            "steps_per_epoch": STEPS_PER_EPOCH // 2,
+            "num_epochs": 1,
+            "do_training": True,
+        }
+        p2_env_kwargs = {
+            "model": ppo,
+            "steps_per_epoch": STEPS_PER_EPOCH // 2,
+            "num_epochs": 1,
+            "do_training": False,
+        }
 
-        # Save Model
+        # Train Model
+        # Make Two Threads And Play vs Each Other
+        player1._start_new_battle = True
+        player2._start_new_battle = True
+
+        loop = asyncio.get_event_loop()
+
+        t1 = Thread(
+            target=lambda: env_algorithm_wrapper(model_training, player1, p1_env_kwargs)
+        )
+        t1.start()
+
+        t2 = Thread(
+            target=lambda: env_algorithm_wrapper(model_training, player2, p2_env_kwargs)
+        )
+        t2.start()
+
+        while player1._start_new_battle:
+            loop.run_until_complete(launch_battles(player1, player2))
+        t1.join()
+        t2.join()
+
+        # Save model
         ppo.save(output_dir, reset_trackers=True, create_plots=False)
 
         # Evaluate Model
@@ -168,7 +228,7 @@ if __name__ == "__main__":
             }
 
             print("Results against random player:")
-            env_player.play_against(
+            player1.play_against(
                 env_algorithm=model_evaluation,
                 opponent=random_agent,
                 env_algorithm_kwargs={
@@ -178,10 +238,10 @@ if __name__ == "__main__":
             )
             evaluation_results[f"validation_{ppo.iterations}"][
                 "vs_random"
-            ] = env_player.n_won_battles
+            ] = player1.n_won_battles
 
             print("\nResults against max player:")
-            env_player.play_against(
+            player1.play_against(
                 env_algorithm=model_evaluation,
                 opponent=max_damage_agent,
                 env_algorithm_kwargs={
@@ -191,10 +251,10 @@ if __name__ == "__main__":
             )
             evaluation_results[f"validation_{ppo.iterations}"][
                 "vs_max"
-            ] = env_player.n_won_battles
+            ] = player1.n_won_battles
 
             print("\nResults against smart max player:")
-            env_player.play_against(
+            player1.play_against(
                 env_algorithm=model_evaluation,
                 opponent=smart_max_damage_agent,
                 env_algorithm_kwargs={
@@ -204,7 +264,7 @@ if __name__ == "__main__":
             )
             evaluation_results[f"validation_{ppo.iterations}"][
                 "vs_smax"
-            ] = env_player.n_won_battles
+            ] = player1.n_won_battles
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
@@ -213,28 +273,28 @@ if __name__ == "__main__":
         }
 
         print("Results against random player:")
-        env_player.play_against(
+        player1.play_against(
             env_algorithm=model_evaluation,
             opponent=random_agent,
             env_algorithm_kwargs={"model": ppo, "nb_episodes": NB_EVALUATION_EPISODES},
         )
-        evaluation_results["final"]["vs_random"] = env_player.n_won_battles
+        evaluation_results["final"]["vs_random"] = player1.n_won_battles
 
         print("\nResults against max player:")
-        env_player.play_against(
+        player1.play_against(
             env_algorithm=model_evaluation,
             opponent=max_damage_agent,
             env_algorithm_kwargs={"model": ppo, "nb_episodes": NB_EVALUATION_EPISODES},
         )
-        evaluation_results["final"]["vs_max"] = env_player.n_won_battles
+        evaluation_results["final"]["vs_max"] = player1.n_won_battles
 
         print("\nResults against smart max player:")
-        env_player.play_against(
+        player1.play_against(
             env_algorithm=model_evaluation,
             opponent=smart_max_damage_agent,
             env_algorithm_kwargs={"model": ppo, "nb_episodes": NB_EVALUATION_EPISODES},
         )
-        evaluation_results["final"]["vs_smax"] = env_player.n_won_battles
+        evaluation_results["final"]["vs_smax"] = player1.n_won_battles
 
     with open(os.path.join(output_dir, "results.json"), "w") as fp:
         json.dump(evaluation_results, fp)
