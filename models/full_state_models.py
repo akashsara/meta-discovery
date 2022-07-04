@@ -312,3 +312,179 @@ class BattleModel(nn.Module):
         battle_state = torch.cat([battle_state.unsqueeze(-1), emphasis_vector], dim=-1)
         actions = self.model(battle_state).squeeze(-1)
         return actions
+
+
+class ActorCriticBattleModel(nn.Module):
+    def __init__(
+        self,
+        n_actions,
+        pokemon_embedding_dim,
+        team_embedding_dim,
+        max_values_dict,
+        state_length_dict,
+    ):
+        """
+        State:
+        [*player_pokemon1, *player_pokemon2, *player_pokemon3,
+        *player_pokemon4, *player_pokemon5, *player_pokemon6, player_state,
+        *opponent_pokemon1, *opponent_pokemon2, *opponent_pokemon3,
+        *opponent_pokemon4, *opponent_pokemon5, *opponent_pokemon6,
+        opponent_state, battle_state, action_mask]
+
+        Where, each pokemon consists of 11 vectors:
+        [pokemon_species, pokemon_item, pokemon_ability,
+        pokemon_possible_ability1, pokemon_possible_ability2,
+        pokemon_possible_ability3, pokemon_move1, pokemon_move2,
+        pokemon_move3, pokemon_move4, pokemon_others_state]
+
+        In total:
+        12 Pokemon * 11 Vectors + 2 Team Vectors + 1 Team Vector + 1 Mask
+        = State of size 136
+        """
+        super(ActorCriticBattleModel, self).__init__()
+        self.pokemon_per_team = 6
+        self.pokemon_state_length = (
+            state_length_dict["pokemon_state"]
+            + state_length_dict["pokemon_others_state"]
+        )
+        self.all_pokemon_state_length = (
+            self.pokemon_state_length * self.pokemon_per_team
+        )
+        self.team_state_length = state_length_dict["team_state"]
+        self.battle_state_length = state_length_dict["battle_state"]
+
+        in_features = team_embedding_dim + team_embedding_dim + self.battle_state_length
+
+        self.pokemon_model = PokemonModel(
+            pokemon_embedding_dim,
+            max_values_dict,
+            state_length_dict["pokemon_others_state"],
+        )
+        self.team_model = TeamModel(
+            team_embedding_dim, pokemon_embedding_dim, state_length_dict["team_state"]
+        )
+        # (batch_size, in_features) -> (batch_size, n_actions)
+        self.policy_head = nn.Linear(in_features=in_features, out_features=n_actions)
+        self.value_head = nn.Linear(in_features=in_features, out_features=1)
+        # (batch_size, n_actions, pokemon_embedding_dim + 1) -> 
+        # (batch_size, n_actions, 1)
+        self.policy_emphasis_head = nn.Linear(in_features=1 + pokemon_embedding_dim, out_features=1)
+        # Save these variables for (potential) future use
+        self.pokemon_embedding_dim = pokemon_embedding_dim
+        self.team_embedding_dim = team_embedding_dim
+
+    def process(self, batch):
+        """
+        Since we have a complex input torch can't batch it up properly.
+        So we handle this ourselves.
+        """
+        if batch.ndim == 1:
+            return batch.unsqueeze(0)
+        else:
+            return batch
+
+    def forward(self, state):
+        # Convert state to (batch_size, state) if not already in it
+        state = self.process(state)
+        # Segment out the different parts of the state
+        # Applying this only on the 1st dimension (IE not the batch dim)
+        player_pokemon_state = state[:, 0 : self.all_pokemon_state_length]
+        x = self.all_pokemon_state_length
+        player_state = state[:, x : x + self.team_state_length]
+        x = x + self.team_state_length
+        opponent_pokemon_state = state[:, x : x + self.all_pokemon_state_length]
+        x = x + self.all_pokemon_state_length
+        opponent_state = state[:, x : x + self.team_state_length]
+        x = x + self.team_state_length
+        battle_state = state[:, x : x + self.battle_state_length]
+        x = x + self.battle_state_length
+        player_active_pokemon_index = state[:, x].long()
+        x = x + 1
+        opponent_active_pokemon_index = state[:, x].long()
+
+        # Get embeddings for each individual pokemon
+        player_pokemon = []
+        opponent_pokemon = []
+        active_move1_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move2_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move3_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move4_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        start = 0
+        end = start + self.pokemon_state_length
+        for i in range(6):
+            (
+                pokemon,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+            ) = self.pokemon_model(
+                player_pokemon_state[:, start:end], return_moveset=True
+            )
+            player_pokemon.append(pokemon)
+
+            # Keep track of the active moves
+            active_move1_batch[player_active_pokemon_index == i] = active_move1[
+                player_active_pokemon_index == i
+            ]
+            active_move2_batch[player_active_pokemon_index == i] = active_move2[
+                player_active_pokemon_index == i
+            ]
+            active_move3_batch[player_active_pokemon_index == i] = active_move3[
+                player_active_pokemon_index == i
+            ]
+            active_move4_batch[player_active_pokemon_index == i] = active_move4[
+                player_active_pokemon_index == i
+            ]
+
+            pokemon = self.pokemon_model(opponent_pokemon_state[:, start:end])
+            opponent_pokemon.append(pokemon)
+
+            start = end
+            end = start + self.pokemon_state_length
+
+        player_team = self.team_model(
+            player_pokemon, player_state, player_active_pokemon_index
+        )
+        opponent_team = self.team_model(
+            opponent_pokemon, opponent_state, opponent_active_pokemon_index
+        )
+
+        battle_state = torch.cat([player_team, opponent_team, battle_state], dim=-1)
+        policy = self.policy_head(battle_state)
+        value = self.value_head(battle_state)
+        # 22 Actions:
+        # 0-4, 4-8, 8-12, 12-16 are for moves.
+        # Moves, Z-Moves, Mega Evolved Moves, Dynamaxed Moves
+        # 16-22 = 6 Switches
+        # TODO: Multiply/Add move vector by the relevant bonus (z/mega/dyna)
+        emphasis_vector = torch.stack(
+            [
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                active_move1,
+                active_move2,
+                active_move3,
+                active_move4,
+                player_pokemon[0],
+                player_pokemon[1],
+                player_pokemon[2],
+                player_pokemon[3],
+                player_pokemon[4],
+                player_pokemon[5],
+            ],
+            dim=1,
+        )
+        policy = torch.cat([policy.unsqueeze(-1), emphasis_vector], dim=-1)
+        policy = self.policy_emphasis_head(policy).squeeze(-1)
+        return policy, value
