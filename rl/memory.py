@@ -3,8 +3,11 @@ from collections import namedtuple, deque
 import numpy as np
 import torch
 
-Transition = namedtuple(
+DQNTransition = namedtuple(
     "Transition", ("state", "action", "next_state", "reward", "action_mask")
+)
+PPOTransition = namedtuple(
+    "Transition", ("state", "action", "action_mask", "log_prob", "return_", "advantage")
 )
 
 
@@ -14,7 +17,7 @@ class SequentialMemory:
 
     def push(self, *args):
         """Save a transition"""
-        self.memory.append(Transition(*args))
+        self.memory.append(DQNTransition(*args))
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
@@ -24,30 +27,28 @@ class SequentialMemory:
 
 
 class PPOMemory:
+    """
+    The main distinctions between this and the DQN Memory are:
+    1) We don't want to reuse items here. Each transition is used only once.
+    2) We don't have a maximum memory size due to the above.
+    """
     def __init__(self, batch_size):
-        self.states = []
-        self.actions = []
-        self.action_masks = []
-        self.log_probs = []
-        self.returns = []
-        self.advantages = []
+        self.memory = []
         self.batch_size = batch_size
         self.batches = []
+        self.last_used = 0
 
     def push(self, state, action, action_mask, log_prob, return_, advantage):
         """
         Note: All received items are torch.tensors of shape (N, D)
         Where N is shared and is the size of a particular episode
-        And D is the dimensionality for that entity
+        And D is the dimensionality for that entity.
+        So we need to push each transition into memory.
         """
-        self.states.append(state)
-        self.actions.append(action)
-        self.action_masks.append(action_mask)
-        self.log_probs.append(log_prob)
-        self.returns.append(return_)
-        self.advantages.append(advantage)
+        for s, a, a_m, l_p, r, adv in zip(state, action, action_mask, log_prob, return_, advantage):
+            self.memory.append(PPOTransition(s, a, a_m, l_p, r, adv))
 
-    def is_empty(self):
+    def is_empty(self): 
         if len(self.states) == 0:
             return True
         return False
@@ -57,31 +58,23 @@ class PPOMemory:
         We first flatten out the variables in our memory.
         Then we split it into batches.
         """
-        self.states = torch.cat(self.states, dim=0)
-        self.actions = torch.cat(self.actions, dim=0)
-        self.action_masks = torch.cat(self.action_masks, dim=0)
-        self.log_probs = torch.cat(self.log_probs, dim=0)
-        self.returns = torch.cat(self.returns, dim=0)
-        self.advantages = torch.cat(self.advantages, dim=0)
-
-        n_items = len(self.states)
+        n_items = len(self.memory)
         batches = np.arange(0, n_items, self.batch_size)
         indices = np.arange(n_items)
         np.random.shuffle(indices)
+        # Store a list of batches to then return
         self.batches = [indices[i : i + self.batch_size] for i in batches]
+        # Store the last used index in case we add more items before sampling
+        self.last_used = n_items
 
     def get_num_batches(self):
         return len(self.batches)
 
     def sample(self):
         for batch in self.batches:
-            yield self.states[batch],  self.actions[batch], self.action_masks[batch], self.log_probs[batch], self.returns[batch], self.advantages[batch]
+            yield [self.memory[i] for i in batch]
 
     def clear(self):
-        self.states = []
-        self.actions = []
-        self.action_masks = []
-        self.log_probs = []
-        self.returns = []
-        self.advantages = []
+        self.memory = self.memory[self.last_used:]
         self.batches = []
+        self.last_used = 0

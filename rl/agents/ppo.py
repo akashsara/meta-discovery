@@ -7,7 +7,7 @@ import numpy as np
 import os
 
 sys.path.append("./")
-from rl.memory import Transition
+from rl.memory import PPOTransition
 import graphics
 
 
@@ -69,7 +69,7 @@ class PPOAgent:
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
             print("Load successful.")
 
-    def fit(self, environment, steps_per_epoch, num_epochs):
+    def fit(self, environment, steps_per_epoch, num_epochs, do_training=True):
         self.model.train()
         all_rewards = []
         all_battle_lengths = []
@@ -157,10 +157,11 @@ class PPOAgent:
                     states, actions, action_masks, log_probs, returns, advantages
                 )
             # Run PPO Training
-            print(f"PPO Training: [{epoch+1}/{num_epochs}]")
-            self.train()
-            # Clear memory
-            self.memory.clear()
+            if do_training:
+                print(f"PPO Training: [{epoch+1}/{num_epochs}]")
+                self.train()
+                # Clear memory
+                self.memory.clear()
             # Store metrics for plotting
             self.rewards.extend(all_rewards)
             self.battle_lengths.extend(all_battle_lengths)
@@ -200,14 +201,15 @@ class PPOAgent:
         self.memory.generate_batches()
         num_batches = self.memory.get_num_batches()
         for batch in tqdm(self.memory.sample(), total=num_batches):
-            (
-                states,
-                actions,
-                action_masks,
-                old_log_probs,
-                returns,
-                advantages,
-            ) = batch
+            # Retrieve transitions
+            batch = PPOTransition(*zip(*batch))
+            states = torch.stack(batch.state).to(self.device)
+            actions = torch.tensor(batch.action).to(self.device)
+            action_masks = torch.stack(batch.action_mask).to(self.device)
+            old_log_probs = torch.stack(batch.log_prob).to(self.device)
+            returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
+            advantages = torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
+
             policy, values = self.model(states)
             distribution = self.get_distribution(policy, action_masks)
             entropy = distribution.entropy().mean()

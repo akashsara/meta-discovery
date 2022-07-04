@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 sys.path.append("./")
-from rl.memory import Transition
+from rl.memory import DQNTransition
 import graphics
 
 
@@ -165,7 +165,7 @@ class DQNAgent:
 
         # Create batch from memory
         transitions = self.memory.sample(self.batch_size)
-        batch = Transition(*zip(*transitions))
+        batch = DQNTransition(*zip(*transitions))
 
         # Separate out data into separate batches
         # (batch_size, state_size)
