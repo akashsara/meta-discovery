@@ -103,17 +103,17 @@ class PPOAgent:
                         # Make action mask
                         action_mask = environment.get_action_mask().to(self.device)
                         # Get policy & value
-                        policy, value = self.model(state)
+                        policy, value = self.model(state.to(self.device))
                         # Get policy distribution
                         distribution = self.get_distribution(policy, action_mask)
                         # Sample action
-                        action = distribution.sample().detach().cpu()
+                        action = distribution.sample().detach()
                         # Get log probabilities
                         log_probs = distribution.log_prob(action)
                         # Get entropy
                         step_entropy = distribution.entropy().mean()
                         # Play Move
-                        next_state, reward, done, _ = environment.step(action)
+                        next_state, reward, done, _ = environment.step(action.cpu())
                         # Store variables needed for learning
                         episode_return += reward
                         entropy += step_entropy
