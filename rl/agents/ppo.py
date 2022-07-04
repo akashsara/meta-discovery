@@ -235,9 +235,6 @@ class PPOAgent:
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
-            # Gradient Clipping
-            for param in self.model.parameters():
-                param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
 
     def test(self, environment, num_episodes):
