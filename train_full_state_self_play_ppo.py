@@ -171,18 +171,19 @@ if __name__ == "__main__":
 
     evaluation_results = {}
     last_validated = 0
+    num_epochs = max(VALIDATE_EVERY // STEPS_PER_EPOCH, 1)
     while ppo.iterations < NB_TRAINING_STEPS:
         # Setup arguments to pass to the training function
         p1_env_kwargs = {
             "model": ppo,
             "steps_per_epoch": STEPS_PER_EPOCH // 2,
-            "num_epochs": 1,
+            "num_epochs": num_epochs,
             "do_training": True,
         }
         p2_env_kwargs = {
             "model": ppo,
             "steps_per_epoch": STEPS_PER_EPOCH // 2,
-            "num_epochs": 1,
+            "num_epochs": num_epochs,
             "do_training": False,
         }
 
@@ -208,9 +209,6 @@ if __name__ == "__main__":
         t1.join()
         t2.join()
 
-        # Save model
-        ppo.save(output_dir, reset_trackers=True, create_plots=False)
-
         # Evaluate Model
         # Works only if NB_VALIDATION_EPISODES is set
         # if STEPS_PER_EPOCH >= VALIDATE_EVERY,
@@ -221,6 +219,9 @@ if __name__ == "__main__":
             NB_VALIDATION_EPISODES > 0
             and (ppo.iterations - last_validated) >= VALIDATE_EVERY
         ):
+            # Save model
+            ppo.save(output_dir, reset_trackers=True, create_plots=False)
+            # Validation
             last_validated = ppo.iterations
             evaluation_results[f"validation_{ppo.iterations}"] = {
                 "n_battles": NB_VALIDATION_EPISODES,
