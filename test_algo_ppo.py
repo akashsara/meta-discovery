@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # Config - Training Hyperparameters
     RANDOM_SEED = 42
     NB_TRAINING_STEPS = 100000
-    STEPS_PER_EPOCH = 10000  # Steps to gather before running PPO (train interval)
+    STEPS_PER_EPOCH = 5000  # Steps to gather before running PPO (train interval)
     VALIDATE_EVERY = 50000  # Run intermediate evaluation every N steps
     NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
@@ -129,16 +129,33 @@ if __name__ == "__main__":
 
     # Load back all the trackers to draw the final plots
     all_rewards = []
-    all_battle_lengths = []
-    for file in os.listdir(output_dir):
-        if "statistics_" in file:
-            x = torch.load(os.path.join(output_dir, file), map_location=ppo.device)
-            all_rewards.append(x["reward"])
-            all_battle_lengths.append(x["battle_length"])
+    all_episode_lengths = []
+    all_actor_losses = []
+    all_critic_losses = []
+    all_entropy = []
+    all_losses = []
+    # Sort files by iteration for proper graphing
+    files_to_read = sorted([int(file.split(".pt")[0].split("_")[1]) for file in os.listdir(output_dir) if "statistics_" in file])
+    for file in files_to_read:
+        x = torch.load(os.path.join(output_dir, f"statistics_{file}.pt"), map_location=ppo.device)
+        all_rewards.append(x["reward"])
+        all_episode_lengths.append(x["episode_lengths"])
+        all_actor_losses.append(x["actor_loss"])
+        all_critic_losses.append(x["critic_loss"])
+        all_entropy.append(x["entropy"])
+        all_losses.append(x["total_loss"])
     all_rewards = torch.cat(all_rewards).flatten().cpu().numpy()
-    all_battle_lengths = torch.cat(all_battle_lengths).flatten().cpu().numpy()
+    all_episode_lengths = torch.cat(all_episode_lengths).flatten().cpu().numpy()
+    all_actor_losses = torch.cat(all_actor_losses).flatten().cpu().numpy()
+    all_critic_losses = torch.cat(all_critic_losses).flatten().cpu().numpy()
+    all_entropy = torch.cat(all_entropy).flatten().cpu().numpy()
+    all_losses = torch.cat(all_losses).flatten().cpu().numpy()
     ppo.rewards = all_rewards
-    ppo.battle_lengths = all_battle_lengths
+    ppo.episode_lengths = all_episode_lengths
+    ppo.actor_losses = all_actor_losses
+    ppo.critic_losses = all_critic_losses
+    ppo.entropy = all_entropy
+    ppo.total_losses = all_losses
     ppo.plot_and_save_metrics(
         output_dir, is_cumulative=True, reset_trackers=True, create_plots=True
     )
