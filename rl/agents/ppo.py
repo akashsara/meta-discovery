@@ -166,18 +166,20 @@ class PPOAgent:
             self.rewards.extend(all_rewards)
             self.battle_lengths.extend(all_battle_lengths)
 
-    def get_distribution(self, policy, action_mask):
+    def get_distribution(self, policy, action_mask=None):
         """Stochastic Action Selection"""
-        # Apply action mask
-        policy = policy + action_mask
+        # Apply action mask if it exists
+        if action_mask:
+            policy = policy + action_mask
         # Create distribution
         distribution = Categorical(probs=policy.softmax(dim=-1))
         return distribution
 
-    def get_action(self, policy, action_mask):
+    def get_action(self, policy, action_mask=None):
         """Deterministic Action Selection"""
-        # Apply action mask
-        policy = policy + action_mask
+        # Apply action mask if it exists
+        if action_mask:
+            policy = policy + action_mask
         # Sample action
         action = policy.argmax(dim=-1).detach().cpu().numpy()
         return action
