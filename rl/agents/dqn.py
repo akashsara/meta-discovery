@@ -67,6 +67,9 @@ class DQNAgent:
         self.policy_network.to(self.device)
         self.target_network.to(self.device)
 
+        # Print model
+        print(self.policy_network)
+
         # Setup some variables to track things
         self.losses = []
         self.rewards = []
