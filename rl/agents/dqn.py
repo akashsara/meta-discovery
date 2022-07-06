@@ -73,7 +73,7 @@ class DQNAgent:
         # Setup some variables to track things
         self.losses = []
         self.rewards = []
-        self.battle_lengths = []
+        self.episode_lengths = []
 
         if load_dict_path:
             print("Loading Model")
@@ -87,11 +87,8 @@ class DQNAgent:
         state = environment.reset()
         self.policy_network.train()
         self.target_network.eval()
-        all_rewards = []
-        all_losses = []
-        all_battle_lengths = []
         loss = None
-        current_battle_length = 0
+        current_episode_length = 0
         for i in tqdm(range(num_training_steps)):
             # Make action mask
             action_mask = environment.get_action_mask().to(self.device)
@@ -120,13 +117,13 @@ class DQNAgent:
                 self.memory.push(state, action, next_state, reward, action_mask)
             # Reset environment if we're done
             if done:
-                all_battle_lengths.append(current_battle_length)
-                current_battle_length = 0
+                self.episode_lengths.append(current_episode_length)
+                current_episode_length = 0
                 state = environment.reset()
             # Else just use the next state as the current state
             else:
                 state = next_state
-                current_battle_length += 1
+                current_episode_length += 1
 
             # Train model on one batch of data
             if (self.iterations > self.warmup_steps) and (
@@ -144,9 +141,9 @@ class DQNAgent:
             # TODO: Remove when the bug is fixed.
             if not skip_step:
                 # Store metrics
-                all_rewards.append(reward)
+                self.rewards.append(reward)
                 if loss:
-                    all_losses.append(loss.detach().cpu())
+                    self.losses.append(loss.detach().cpu())
                     loss = None
 
             # Housekeeping
@@ -155,11 +152,8 @@ class DQNAgent:
             # Log output to console
             if self.iterations % self.log_interval == 0:
                 tqdm.write(
-                    f"[{i + 1}/{num_training_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(all_rewards)}\tAverage Loss: {np.mean(all_losses)}"
+                    f"[{i + 1}/{num_training_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(self.rewards):.4f}\tAverage Episode Length: {np.mean(self.episode_lengths):.2f}\tAverage Loss: {np.mean(self.losses):.4f}"
                 )
-        self.rewards.extend(all_rewards)
-        self.losses.extend(all_losses)
-        self.battle_lengths.extend(all_battle_lengths)
 
     def train(self):
         # Only train if we have enough samples for a batch of data
@@ -274,8 +268,8 @@ class DQNAgent:
             average_rewards = x.cumsum() / (np.arange(x.size) + 1)
             x = np.array(self.losses)
             average_losses = x.cumsum() / (np.arange(x.size) + 1)
-            x = np.array(self.battle_lengths)
-            average_battle_length = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.episode_lengths)
+            average_episode_length = x.cumsum() / (np.arange(x.size) + 1)
             graphics.plot_and_save_loss(
                 average_rewards,
                 "steps",
@@ -289,27 +283,29 @@ class DQNAgent:
                 os.path.join(output_path, f"loss_{suffix}.jpg"),
             )
             graphics.plot_and_save_loss(
-                average_battle_length,
+                average_episode_length,
                 "episodes",
-                "battle_length",
-                os.path.join(output_path, f"battle_length_{suffix}.jpg"),
+                "episode_length",
+                os.path.join(output_path, f"episode_length_{suffix}.jpg"),
             )
         # Save trackers
         torch.save(
             {
                 "loss": torch.tensor(self.losses),
                 "reward": torch.tensor(self.rewards),
-                "battle_length": torch.tensor(self.battle_lengths),
+                "episode_lengths": torch.tensor(self.episode_lengths),
             },
             os.path.join(output_path, f"statistics_{suffix}.pt"),
         )
         if reset_trackers:
             self.losses = []
             self.rewards = []
-            self.battle_lengths = []
+            self.episode_lengths = []
 
     def save(self, output_path, reset_trackers=False, create_plots=True):
-        self.plot_and_save_metrics(output_path, reset_trackers=reset_trackers, create_plots=create_plots)
+        self.plot_and_save_metrics(
+            output_path, reset_trackers=reset_trackers, create_plots=create_plots
+        )
         torch.save(
             {
                 "model_state_dict": self.policy_network.state_dict(),

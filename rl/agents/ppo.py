@@ -57,7 +57,11 @@ class PPOAgent:
 
         # Setup some variables to track things
         self.rewards = []
-        self.battle_lengths = []
+        self.episode_lengths = []
+        self.actor_losses = []
+        self.critic_losses = []
+        self.entropy = []
+        self.total_losses = []
 
         # Print model
         print(self.model)
@@ -71,8 +75,6 @@ class PPOAgent:
 
     def fit(self, environment, steps_per_epoch, num_epochs, do_training=True):
         self.model.train()
-        all_rewards = []
-        all_battle_lengths = []
         total_iterations = self.iterations + (steps_per_epoch * num_epochs)
         for epoch in range(num_epochs):
             start_iterations = self.iterations
@@ -125,7 +127,7 @@ class PPOAgent:
                         episode_values.append(value)
                         episode_done_mask.append(1 - done)
                         # Store for later logging/graphs
-                        all_rewards.append(reward)
+                        self.rewards.append(reward)
                     # Transition to next state
                     state = next_state
                     # Housekeeping
@@ -133,11 +135,10 @@ class PPOAgent:
                     self.iterations += 1
                     # Log output to console
                     if self.iterations % self.log_interval == 0:
-                        i = self.iterations - start_iterations
                         print(
-                            f"[{self.iterations}/{total_iterations}] Average Reward: {np.mean(all_rewards)}\tAverage Battle Length: {np.mean(all_battle_lengths)}"
+                            f"[{self.iterations}/{total_iterations}] Average Reward: {np.mean(self.rewards):.4f}\tAverage Episode Length: {np.mean(self.episode_lengths):.2f}\tAverage Loss: {np.mean(self.total_losses):.4f}"
                         )
-                all_battle_lengths.append(episode_length)
+                self.episode_lengths.append(episode_length)
                 # Compute GAE at the end of the episode
                 next_state = next_state.to(self.device)
                 _, next_value = self.model(next_state)
@@ -162,9 +163,6 @@ class PPOAgent:
                 self.train()
                 # Clear memory
                 self.memory.clear()
-            # Store metrics for plotting
-            self.rewards.extend(all_rewards)
-            self.battle_lengths.extend(all_battle_lengths)
 
     def get_distribution(self, policy, action_mask=None):
         """Stochastic Action Selection"""
@@ -227,17 +225,24 @@ class PPOAgent:
                 * advantages
             )
 
-            actor_loss = torch.min(surr1, surr2).mean()
-            critic_loss = (returns - values).pow(2).mean()
+            critic_loss = self.c1 * ((returns - values).pow(2).mean())
+            actor_loss = -torch.min(surr1, surr2).mean()
+            entropy = - (self.c2 * entropy)
 
             # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
             # Gradient Descent = -Gradient Ascent
-            loss = (self.c1 * critic_loss) - (actor_loss) - (self.c2 * entropy)
+            loss = critic_loss + actor_loss + entropy
 
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+
+            # Store loss values for future plotting
+            self.actor_losses.append(actor_loss.item())
+            self.critic_losses.append(critic_loss.item())
+            self.entropy.append(entropy.item())
+            self.total_losses.append(loss.item())
 
     def test(self, environment, num_episodes):
         self.model.eval()
@@ -268,8 +273,16 @@ class PPOAgent:
         if create_plots:
             x = np.array(self.rewards)
             average_rewards = x.cumsum() / (np.arange(x.size) + 1)
-            x = np.array(self.battle_lengths)
-            average_battle_length = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.episode_lengths)
+            average_episode_length = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.actor_losses)
+            actor_loss = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.critic_losses)
+            critic_loss = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.entropy)
+            entropy = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.total_losses)
+            total_loss = x.cumsum() / (np.arange(x.size) + 1)
             graphics.plot_and_save_loss(
                 average_rewards,
                 "steps",
@@ -277,22 +290,54 @@ class PPOAgent:
                 os.path.join(output_path, f"reward_{suffix}.jpg"),
             )
             graphics.plot_and_save_loss(
-                average_battle_length,
+                average_episode_length,
                 "episodes",
-                "battle_length",
-                os.path.join(output_path, f"battle_length_{suffix}.jpg"),
+                "episode_length",
+                os.path.join(output_path, f"episode_length_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                actor_loss,
+                "steps",
+                "actor loss",
+                os.path.join(output_path, f"actor_loss_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                critic_loss,
+                "steps",
+                "critic loss",
+                os.path.join(output_path, f"critic_loss_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                entropy,
+                "steps",
+                "entropy",
+                os.path.join(output_path, f"entropy_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                total_loss,
+                "steps",
+                "total loss",
+                os.path.join(output_path, f"total_loss_{suffix}.jpg"),
             )
         # Save trackers
         torch.save(
             {
                 "reward": torch.tensor(self.rewards),
-                "battle_length": torch.tensor(self.battle_lengths),
+                "episode_lengths": torch.tensor(self.episode_lengths),
+                "actor_loss": torch.tensor(self.actor_losses),
+                "critic_loss": torch.tensor(self.critic_losses),
+                "entropy": torch.tensor(self.entropy),
+                "total_loss": torch.tensor(self.total_losses),
             },
             os.path.join(output_path, f"statistics_{suffix}.pt"),
         )
         if reset_trackers:
             self.rewards = []
-            self.battle_lengths = []
+            self.episode_lengths = []
+            self.actor_losses = []
+            self.critic_losses = []
+            self.entropy = []
+            self.total_losses = []
 
     def save(self, output_path, reset_trackers=False, create_plots=True):
         self.plot_and_save_metrics(
