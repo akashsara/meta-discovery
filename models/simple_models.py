@@ -3,10 +3,10 @@ import torch.nn as nn
 import sys
 
 class SimpleActorCriticModel(nn.Module):
-    def __init__(self, n_actions):
+    def __init__(self, n_actions, n_obs=10):
         super(SimpleActorCriticModel, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(10, 128),
+            nn.Linear(n_obs, 128),
             nn.ELU(inplace=True),
             nn.Linear(128, 64),
             nn.ELU(inplace=True),
@@ -21,10 +21,10 @@ class SimpleActorCriticModel(nn.Module):
         return policy, value
 
 class SimpleModel(nn.Module):
-    def __init__(self, n_actions):
+    def __init__(self, n_actions, n_obs=10):
         super(SimpleModel, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(10, 128),
+            nn.Linear(n_obs, 128),
             nn.ELU(inplace=True),
             nn.Linear(128, 64),
             nn.ELU(inplace=True),
