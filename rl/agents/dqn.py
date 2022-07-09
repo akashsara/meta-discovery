@@ -240,9 +240,11 @@ class DQNAgent:
     def test(self, environment, num_episodes):
         self.policy_network.eval()
         all_rewards = []
+        episode_rewards = []
         for episode in tqdm(range(num_episodes)):
             done = False
             state = environment.reset()
+            episode_reward = 0
             while not done:
                 action_mask = environment.get_action_mask().to(self.device)
                 # Get q_values
@@ -252,8 +254,10 @@ class DQNAgent:
                 action = int(self.policy.greedy_action(q_values, action_mask))
                 # Play move
                 state, reward, done, info = environment.step(action)
-            all_rewards.append(reward)
-        return np.mean(all_rewards)
+                all_rewards.append(reward)
+                episode_reward += reward
+            episode_rewards.append(episode_reward)
+        return np.mean(all_rewards), np.mean(episode_rewards)
 
     def plot_and_save_metrics(
         self, output_path, is_cumulative=False, reset_trackers=False, create_plots=True
