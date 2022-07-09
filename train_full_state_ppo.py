@@ -29,10 +29,10 @@ def model_training(player, model, **kwargs):
 def model_evaluation(player, model, nb_episodes):
     # Reset battle statistics
     player.reset_battles()
-    average_reward = model.test(player, num_episodes=nb_episodes)
+    average_reward, episodic_average_reward = model.test(player, num_episodes=nb_episodes)
 
     print(
-        f"Evaluation: {player.n_won_battles} victories out of {nb_episodes} episodes. Average Reward: {average_reward}"
+        f"Evaluation: {player.n_won_battles} victories out of {nb_episodes} episodes. Average Reward: {average_reward}. Average Episode Reward: {episodic_average_reward}"
     )
 
 
