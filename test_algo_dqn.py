@@ -22,7 +22,6 @@ from rl.policy import (
 
 if __name__ == "__main__":
     # Config - Versioning
-    training_opponent = "max"  # random, max, smart
     experiment_name = f"TestTaxiDQN"
     hash_name = str(hash(experiment_name))[2:12]
 
@@ -33,7 +32,7 @@ if __name__ == "__main__":
     training_config = {
         "batch_size": 32,
         "gamma": 0.9,
-        "tau": 0.001,  # AKA Target Model Update
+        "tau": 100,  # AKA Target Model Update
         "train_interval": 1,
         "log_interval": 1000,
         "warmup_steps": 1000,
@@ -112,10 +111,11 @@ if __name__ == "__main__":
     evaluation_results["initial"] = {
         "n_battles": NB_VALIDATION_EPISODES,
     }
-    rewards = dqn.test(env, NB_VALIDATION_EPISODES)
-    evaluation_results["initial"]["rewards"] = rewards
+    average_rewards, average_episode_rewards = dqn.test(env, NB_VALIDATION_EPISODES)
+    evaluation_results["initial"]["average_rewards"] = average_rewards
+    evaluation_results["initial"]["average_episode_rewards"] = average_episode_rewards
 
-    print(f"INITIAL REWARD: {rewards}")
+    print(f"INITIAL REWARD: {average_rewards}, {average_episode_rewards}")
 
     epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
     for i in range(epochs):
@@ -129,21 +129,31 @@ if __name__ == "__main__":
         # Works only if NB_VALIDATION_EPISODES is set
         # And this isn't the last "epoch" [Since we do a full eval after this]
         if NB_VALIDATION_EPISODES > 0 and i + 1 != epochs:
-            evaluation_results[f"validation_set_{i+1}"] = {
+            evaluation_results[f"validation_{dqn.iterations}"] = {
                 "n_battles": NB_VALIDATION_EPISODES,
             }
-            rewards = dqn.test(env, NB_VALIDATION_EPISODES)
-            evaluation_results[f"validation_set_{i+1}"]["rewards"] = rewards
-            print(f"VALIDATION {i+1} REWARD: {rewards}")
+            average_rewards, average_episode_rewards = dqn.test(
+                env, NB_VALIDATION_EPISODES
+            )
+            evaluation_results[f"validation_{dqn.iterations}"][
+                "average_rewards"
+            ] = average_rewards
+            evaluation_results[f"validation_{dqn.iterations}"][
+                "average_episode_rewards"
+            ] = average_episode_rewards
+            print(
+                f"VALIDATION {dqn.iterations} REWARD: {average_rewards}, {average_episode_rewards}"
+            )
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
         evaluation_results["final"] = {
             "n_battles": NB_EVALUATION_EPISODES,
         }
-        rewards = dqn.test(env, NB_EVALUATION_EPISODES)
-        evaluation_results["final"]["rewards"] = rewards
-        print(f"FINAL REWARD: {rewards}")
+        average_rewards, average_episode_rewards = dqn.test(env, NB_EVALUATION_EPISODES)
+        evaluation_results["final"]["average_rewards"] = average_rewards
+        evaluation_results["final"]["average_episode_rewards"] = average_episode_rewards
+        print(f"FINAL REWARD: {average_rewards}, {average_episode_rewards}")
 
     with open(os.path.join(output_dir, "results.json"), "w") as fp:
         json.dump(evaluation_results, fp)
@@ -153,9 +163,17 @@ if __name__ == "__main__":
     all_rewards = []
     all_episode_lengths = []
     # Sort files by iteration for proper graphing
-    files_to_read = sorted([int(file.split(".pt")[0].split("_")[1]) for file in os.listdir(output_dir) if "statistics_" in file])
+    files_to_read = sorted(
+        [
+            int(file.split(".pt")[0].split("_")[1])
+            for file in os.listdir(output_dir)
+            if "statistics_" in file
+        ]
+    )
     for file in files_to_read:
-        x = torch.load(os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device)
+        x = torch.load(
+            os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device
+        )
         all_losses.append(x["loss"])
         all_rewards.append(x["reward"])
         all_episode_lengths.append(x["episode_lengths"])
