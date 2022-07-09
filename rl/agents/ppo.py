@@ -74,9 +74,9 @@ class PPOAgent:
             print("Load successful.")
 
     def fit(self, environment, steps_per_epoch, num_epochs, do_training=True):
-        self.model.train()
         total_iterations = self.iterations + (steps_per_epoch * num_epochs)
         for epoch in range(num_epochs):
+            self.model.eval()
             start_iterations = self.iterations
             # Play steps_per_rollout steps
             # Note that we may go slightly above this as we prioritize
@@ -115,7 +115,7 @@ class PPOAgent:
                         # Get entropy
                         step_entropy = distribution.entropy().mean()
                         # Play Move
-                        next_state, reward, done, _ = environment.step(action.cpu())
+                        next_state, reward, done, _ = environment.step(int(action))
                         # Store variables needed for learning
                         episode_return += reward
                         entropy += step_entropy
@@ -198,6 +198,7 @@ class PPOAgent:
         return returns
 
     def train(self):
+        self.model.train()
         self.memory.generate_batches()
         num_batches = self.memory.get_num_batches()
         for batch in tqdm(self.memory.sample(), total=num_batches):
@@ -210,9 +211,22 @@ class PPOAgent:
             returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
             advantages = torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
 
+            # advantages = returns - old_values
+            # So: old_values = returns - advantages
+            old_values = returns - advantages
+
+            # Normalize Advantages
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+            # Get current policy distribution & values
             policy, values = self.model(states)
             distribution = self.get_distribution(policy, action_masks)
+
+            # Calculate entropy
             entropy = distribution.entropy().mean()
+            entropy = self.c2 * entropy
+
+            # Calculate Actor Loss
             # Get log probabilities of the previously selected actions
             # On the current version of the model
             # I.E. pi_new(a_t|s_t)
@@ -224,18 +238,25 @@ class PPOAgent:
                 torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
                 * advantages
             )
+            actor_loss = torch.min(surr1, surr2).mean()
 
-            critic_loss = self.c1 * ((returns - values).pow(2).mean())
-            actor_loss = -torch.min(surr1, surr2).mean()
-            entropy = - (self.c2 * entropy)
+            # Calculate Clipped Critic Loss
+            clipped_values = old_values + (values - old_values).clip(
+                -self.clip_param, self.clip_param
+            )
+            values = (values - returns) ** 2
+            clipped_values = (clipped_values - returns) ** 2
+            critic_loss = 0.5 * torch.max(values, clipped_values).mean()
 
             # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
             # Gradient Descent = -Gradient Ascent
-            loss = critic_loss + actor_loss + entropy
+            loss = -1 * (actor_loss - critic_loss + entropy)
 
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
+            ## Gradient Clipping
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), .5)
             self.optimizer.step()
 
             # Store loss values for future plotting
@@ -247,9 +268,11 @@ class PPOAgent:
     def test(self, environment, num_episodes):
         self.model.eval()
         all_rewards = []
+        episode_rewards = []
         for _ in tqdm(range(num_episodes)):
             done = False
             state = environment.reset()
+            episode_reward = 0
             while not done:
                 action_mask = environment.get_action_mask().to(self.device)
                 # Get q_values
@@ -259,8 +282,10 @@ class PPOAgent:
                 action = int(self.get_action(policy, action_mask))
                 # Play move
                 state, reward, done, _ = environment.step(action)
-            all_rewards.append(reward)
-        return np.mean(all_rewards)
+                all_rewards.append(reward)
+                episode_reward += reward
+            episode_rewards.append(episode_reward)
+        return np.mean(all_rewards), np.mean(episode_rewards)
 
     def plot_and_save_metrics(
         self, output_path, is_cumulative=False, reset_trackers=False, create_plots=True
