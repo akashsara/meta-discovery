@@ -1,3 +1,4 @@
+# https://github.com/higgsfield/RL-Adventure-2/blob/master/3.ppo.ipynb
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
@@ -61,6 +62,7 @@ class PPOAgent:
         self.actor_losses = []
         self.critic_losses = []
         self.entropy = []
+        self.approx_kl_divs = []
         self.total_losses = []
 
         # Print model
@@ -73,11 +75,16 @@ class PPOAgent:
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
             print("Load successful.")
 
+    def preprocess(self, state, environment):
+        # state = list(environment.decode(state))
+        state = torch.tensor(state, dtype=torch.float32)
+        return state.to(self.device)
+
     def fit(self, environment, steps_per_epoch, num_epochs, do_training=True):
-        self.model.train()
         total_iterations = self.iterations + (steps_per_epoch * num_epochs)
         for epoch in range(num_epochs):
             start_iterations = self.iterations
+            self.model.eval()
             # Play steps_per_rollout steps
             # Note that we may go slightly above this as we prioritize
             # completing an episode so we can calculate the returns
@@ -97,7 +104,7 @@ class PPOAgent:
                 episode_return = 0
                 # Play one full episode
                 while not done:
-                    state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+                    state = self.preprocess(state, environment)
                     # Get policy & value
                     policy, value = self.model(state.to(self.device))
                     # Get policy distribution
@@ -109,7 +116,7 @@ class PPOAgent:
                     # Get entropy
                     step_entropy = distribution.entropy().mean()
                     # Play Move
-                    next_state, reward, done, _ = environment.step(int(action.cpu()))
+                    next_state, reward, done, _ = environment.step(int(action))
                     # Store variables needed for learning
                     episode_return += reward
                     entropy += step_entropy
@@ -134,9 +141,7 @@ class PPOAgent:
                         )
                 self.episode_lengths.append(episode_length)
                 # Compute GAE at the end of the episode
-                next_state = torch.tensor(
-                    next_state, dtype=torch.float32, device=self.device
-                ).unsqueeze(0)
+                next_state = self.preprocess(next_state, environment)
                 _, next_value = self.model(next_state)
                 episode_returns = self.compute_advantage(
                     next_value, episode_rewards, episode_done_mask, episode_values
@@ -175,7 +180,7 @@ class PPOAgent:
         if action_mask:
             policy = policy + action_mask
         # Sample action
-        action = policy.argmax().detach().cpu().numpy()
+        action = policy.argmax(dim=-1).detach().cpu().numpy()
         return action
 
     def compute_advantage(self, next_values, rewards, masks, values):
@@ -194,6 +199,7 @@ class PPOAgent:
         return returns
 
     def train(self):
+        self.model.train()
         self.memory.generate_batches()
         num_batches = self.memory.get_num_batches()
         for batch in tqdm(self.memory.sample(), total=num_batches):
@@ -205,9 +211,19 @@ class PPOAgent:
             returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
             advantages = torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
 
+            # advantages = returns - old_values
+            # So: old_values = returns - advantages
+            old_values = returns - advantages
+
+            # Get current policy distribution & values
             policy, values = self.model(states)
             distribution = self.get_distribution(policy)
+
+            # Calculate entropy
             entropy = distribution.entropy().mean()
+            entropy = self.c2 * entropy
+
+            # Calculate Actor Loss
             # Get log probabilities of the previously selected actions
             # On the current version of the model
             # I.E. pi_new(a_t|s_t)
@@ -219,34 +235,52 @@ class PPOAgent:
                 torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
                 * advantages
             )
+            actor_loss = torch.min(surr1, surr2).mean()
 
-            critic_loss = self.c1 * ((returns - values).pow(2).mean())
-            actor_loss = -torch.min(surr1, surr2).mean()
-            entropy = - (self.c2 * entropy)
+            # Calculate Clipped Critic Loss
+            clipped_values = old_values + (values - old_values).clip(
+                -self.clip_param, self.clip_param
+            )
+            values = nn.functional.mse_loss(returns, values)
+            clipped_values = nn.functional.mse_loss(returns, clipped_values)
+            critic_loss = self.c1 * torch.max(values, clipped_values)
 
             # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
             # Gradient Descent = -Gradient Ascent
-            loss = critic_loss + actor_loss + entropy
+            loss = -1 * (actor_loss - critic_loss + entropy)
 
             # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
+            ## Gradient Clipping
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), .5)
             self.optimizer.step()
+
+            # Calculate approximate form of reverse KL-Divergence 
+            # for early stopping
+            # Adapted from: 
+            # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
+            with torch.zero_grad():
+                log_ratio = new_log_probs - old_log_probs
+                approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
 
             # Store loss values for future plotting
             self.actor_losses.append(actor_loss.item())
             self.critic_losses.append(critic_loss.item())
             self.entropy.append(entropy.item())
             self.total_losses.append(loss.item())
+            self.approx_kl_divs.append(approx_kl_div)
 
     def test(self, environment, num_episodes):
         self.model.eval()
         all_rewards = []
+        episode_rewards = []
         for _ in tqdm(range(num_episodes)):
             done = False
             state = environment.reset()
+            episode_reward = 0
             while not done:
-                state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+                state = self.preprocess(state, environment)
                 # Get q_values
                 with torch.no_grad():
                     value, policy = self.model(state.to(self.device))
@@ -254,8 +288,10 @@ class PPOAgent:
                 action = int(self.get_action(policy))
                 # Play move
                 state, reward, done, _ = environment.step(action)
-            all_rewards.append(reward)
-        return np.mean(all_rewards)
+                all_rewards.append(reward)
+                episode_reward += reward
+            episode_rewards.append(episode_reward)
+        return np.mean(all_rewards), np.mean(episode_rewards)
 
     def plot_and_save_metrics(
         self, output_path, is_cumulative=False, reset_trackers=False, create_plots=True
@@ -278,6 +314,8 @@ class PPOAgent:
             entropy = x.cumsum() / (np.arange(x.size) + 1)
             x = np.array(self.total_losses)
             total_loss = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.approx_kl_divs)
+            approx_kl_divs = x.cumsum() / (np.arange(x.size) + 1)
             graphics.plot_and_save_loss(
                 average_rewards,
                 "steps",
@@ -314,6 +352,12 @@ class PPOAgent:
                 "total loss",
                 os.path.join(output_path, f"total_loss_{suffix}.jpg"),
             )
+            graphics.plot_and_save_loss(
+                approx_kl_divs,
+                "steps",
+                "approximate KL-divergence",
+                os.path.join(output_path, f"approx_kl_divs_{suffix}.jpg"),
+            )
         # Save trackers
         torch.save(
             {
@@ -321,6 +365,7 @@ class PPOAgent:
                 "episode_lengths": torch.tensor(self.episode_lengths),
                 "actor_loss": torch.tensor(self.actor_losses),
                 "critic_loss": torch.tensor(self.critic_losses),
+                "approx_kl_divs": torch.tensor(self.approx_kl_divs),
                 "entropy": torch.tensor(self.entropy),
                 "total_loss": torch.tensor(self.total_losses),
             },
@@ -332,6 +377,7 @@ class PPOAgent:
             self.actor_losses = []
             self.critic_losses = []
             self.entropy = []
+            self.approx_kl_divs = []
             self.total_losses = []
 
     def save(self, output_path, reset_trackers=False, create_plots=True):

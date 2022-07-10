@@ -1,3 +1,4 @@
+# https://github.com/higgsfield/RL-Adventure-2/blob/master/3.ppo.ipynb
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
@@ -61,6 +62,7 @@ class PPOAgent:
         self.actor_losses = []
         self.critic_losses = []
         self.entropy = []
+        self.approx_kl_divs = []
         self.total_losses = []
 
         # Print model
@@ -241,9 +243,9 @@ class PPOAgent:
             clipped_values = old_values + (values - old_values).clip(
                 -self.clip_param, self.clip_param
             )
-            values = (values - returns) ** 2
-            clipped_values = (clipped_values - returns) ** 2
-            critic_loss = self.c2 * torch.max(values, clipped_values).mean()
+            values = nn.functional.mse_loss(returns, values)
+            clipped_values = nn.functional.mse_loss(returns, clipped_values)
+            critic_loss = self.c2 * torch.max(values, clipped_values)
 
             # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
             # Gradient Descent = -Gradient Ascent
@@ -256,11 +258,20 @@ class PPOAgent:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), .5)
             self.optimizer.step()
 
+            # Calculate approximate form of reverse KL-Divergence 
+            # for early stopping
+            # Adapted from: 
+            # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
+            with torch.zero_grad():
+                log_ratio = new_log_probs - old_log_probs
+                approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+
             # Store loss values for future plotting
             self.actor_losses.append(actor_loss.item())
             self.critic_losses.append(critic_loss.item())
             self.entropy.append(entropy.item())
             self.total_losses.append(loss.item())
+            self.approx_kl_divs.append(approx_kl_div)
 
     def test(self, environment, num_episodes):
         self.model.eval()
@@ -305,6 +316,8 @@ class PPOAgent:
             entropy = x.cumsum() / (np.arange(x.size) + 1)
             x = np.array(self.total_losses)
             total_loss = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.approx_kl_divs)
+            approx_kl_divs = x.cumsum() / (np.arange(x.size) + 1)
             graphics.plot_and_save_loss(
                 average_rewards,
                 "steps",
@@ -341,6 +354,12 @@ class PPOAgent:
                 "total loss",
                 os.path.join(output_path, f"total_loss_{suffix}.jpg"),
             )
+            graphics.plot_and_save_loss(
+                approx_kl_divs,
+                "steps",
+                "approximate KL-divergence",
+                os.path.join(output_path, f"approx_kl_divs_{suffix}.jpg"),
+            )
         # Save trackers
         torch.save(
             {
@@ -348,6 +367,7 @@ class PPOAgent:
                 "episode_lengths": torch.tensor(self.episode_lengths),
                 "actor_loss": torch.tensor(self.actor_losses),
                 "critic_loss": torch.tensor(self.critic_losses),
+                "approx_kl_divs": torch.tensor(self.approx_kl_divs),
                 "entropy": torch.tensor(self.entropy),
                 "total_loss": torch.tensor(self.total_losses),
             },
@@ -359,6 +379,7 @@ class PPOAgent:
             self.actor_losses = []
             self.critic_losses = []
             self.entropy = []
+            self.approx_kl_divs = []
             self.total_losses = []
 
     def save(self, output_path, reset_trackers=False, create_plots=True):
