@@ -79,6 +79,7 @@ if __name__ == "__main__":
         "clip_param": 0.2,  # Surrogate Clipping Parameter
         "c1": 0.5,  # Loss constant 1
         "c2": 0.001,  # Loss constant 2
+        "normalize_advantages": False,
     }
 
     # Config - Training Hyperparameters

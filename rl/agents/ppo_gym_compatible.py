@@ -27,6 +27,7 @@ class PPOAgent:
         clip_param=0.2,
         c1=0.5,
         c2=0.001,
+        normalize_advantages=False,
         log_interval=100,
         load_dict_path=None,
     ):
@@ -42,6 +43,7 @@ class PPOAgent:
         self.clip_param = clip_param
         self.c1 = c1
         self.c2 = c2
+        self.normalize_advantages = normalize_advantages
 
         self.memory = memory
 
@@ -212,11 +214,19 @@ class PPOAgent:
                 actions = torch.tensor(batch.action).to(self.device)
                 old_log_probs = torch.stack(batch.log_prob).to(self.device)
                 returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
-                advantages = torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
+                advantages = (
+                    torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
+                )
 
                 # advantages = returns - old_values
                 # So: old_values = returns - advantages
                 old_values = returns - advantages
+
+                # Normalize advantages
+                if self.normalize_advantage:
+                    advantages = (advantages - advantages.mean()) / (
+                        advantages.std() + 1e-8
+                    )
 
                 # Get current policy distribution & values
                 policy, values = self.model(states)
@@ -264,7 +274,9 @@ class PPOAgent:
                 # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
                 with torch.no_grad():
                     log_ratio = new_log_probs - old_log_probs
-                    approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu()
+                    approx_kl_div = torch.mean(
+                        (torch.exp(log_ratio) - 1) - log_ratio
+                    ).cpu()
 
                 # Store loss values for future plotting
                 self.actor_losses.append(actor_loss.item())
