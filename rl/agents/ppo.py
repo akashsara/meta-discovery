@@ -243,7 +243,7 @@ class PPOAgent:
             )
             values = (values - returns) ** 2
             clipped_values = (clipped_values - returns) ** 2
-            critic_loss = 0.5 * torch.max(values, clipped_values).mean()
+            critic_loss = self.c2 * torch.max(values, clipped_values).mean()
 
             # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
             # Gradient Descent = -Gradient Ascent
