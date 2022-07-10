@@ -2,6 +2,17 @@ import os
 import torch
 
 
+def gym_env_validate_model(results, env, model, episodes, key):
+    average_rewards, average_episode_rewards = model.test(env, episodes)
+    results[f"{key}"] = {
+        "n_episodes": episodes,
+        "average_rewards": average_rewards,
+        "average_episode_rewards": average_episode_rewards
+    }
+    print(f"{key} rewards: {average_rewards}, {average_episode_rewards}")
+    return results
+
+
 def load_trackers_to_ppo_model(output_dir, ppo):
     # Load back all the trackers to draw the final plots
     all_rewards = []
