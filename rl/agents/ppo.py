@@ -215,9 +215,6 @@ class PPOAgent:
             # So: old_values = returns - advantages
             old_values = returns - advantages
 
-            # Normalize Advantages
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
             # Get current policy distribution & values
             policy, values = self.model(states)
             distribution = self.get_distribution(policy, action_masks)
