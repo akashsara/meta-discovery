@@ -50,6 +50,7 @@ if __name__ == "__main__":
     training_config = {
         "batch_size": 32,
         "log_interval": 1000,
+        "num_training_epochs": 10,
         "gamma": 0.99,  # Discount Factor
         "lambda_": 0.95,  # GAE Parameter
         "clip_param": 0.2,  # Surrogate Clipping Parameter
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     # Config - Training Hyperparameters
     RANDOM_SEED = 42
     NB_TRAINING_STEPS = 100000  # Total training steps
-    STEPS_PER_EPOCH = 5000  # Steps to gather before running PPO (train interval)
+    STEPS_PER_ROLLOUT = 5000  # Steps to gather before running PPO (train interval)
     VALIDATE_EVERY = 50000  # Run intermediate evaluation every N steps
     NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
@@ -135,28 +136,28 @@ if __name__ == "__main__":
 
     evaluation_results = {}
     last_validated = 0
-    num_epochs = max(VALIDATE_EVERY // STEPS_PER_EPOCH, 1)
+    num_epochs = max(VALIDATE_EVERY // STEPS_PER_ROLLOUT, 1)
     while ppo.iterations < NB_TRAINING_STEPS:
         # Train Model
         # We train for VALIDATE_EVERY steps
-        # That is, VALIDATE_EVERY//STEPS_PER_EPOCH epochs
-        # Each of STEPS_PER_EPOCH steps
+        # That is, VALIDATE_EVERY//STEPS_PER_ROLLOUT epochs
+        # Each of STEPS_PER_ROLLOUT steps
         env_player.play_against(
             env_algorithm=model_training,
             opponent=training_opponent,
             env_algorithm_kwargs={
                 "model": ppo,
-                "steps_per_epoch": STEPS_PER_EPOCH,
+                "steps_per_rollout": STEPS_PER_ROLLOUT,
                 "num_epochs": num_epochs,
             },
         )
 
         # Evaluate Model
         # Works only if NB_VALIDATION_EPISODES is set
-        # if STEPS_PER_EPOCH >= VALIDATE_EVERY,
-        # we evaluate every STEPS_PER_EPOCH
+        # if STEPS_PER_ROLLOUT >= VALIDATE_EVERY,
+        # we evaluate every STEPS_PER_ROLLOUT
         # Else
-        # we evaluate every ceil(VALIDATE_EVERY / STEPS_PER_EPOCH) steps
+        # we evaluate every ceil(VALIDATE_EVERY / STEPS_PER_ROLLOUT) steps
         if (
             NB_VALIDATION_EPISODES > 0
             and (ppo.iterations - last_validated) >= VALIDATE_EVERY

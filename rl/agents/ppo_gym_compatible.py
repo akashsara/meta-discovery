@@ -21,6 +21,7 @@ class PPOAgent:
         model_kwargs={},
         optimizer_kwargs={},
         batch_size=32,
+        num_training_epochs=1,
         gamma=0.99,
         lambda_=0.95,
         clip_param=0.2,
@@ -33,6 +34,7 @@ class PPOAgent:
         self.iterations = 0
         self.batch_size = batch_size
         self.log_interval = log_interval
+        self.num_training_epochs = num_training_epochs
 
         # Setup model hyperparameters
         self.gamma = gamma
@@ -80,8 +82,8 @@ class PPOAgent:
         state = torch.tensor(state, dtype=torch.float32)
         return state.to(self.device)
 
-    def fit(self, environment, steps_per_epoch, num_epochs, do_training=True):
-        total_iterations = self.iterations + (steps_per_epoch * num_epochs)
+    def fit(self, environment, steps_per_rollout, num_epochs, do_training=True):
+        total_iterations = self.iterations + (steps_per_rollout * num_epochs)
         for epoch in range(num_epochs):
             start_iterations = self.iterations
             self.model.eval()
@@ -89,7 +91,7 @@ class PPOAgent:
             # Note that we may go slightly above this as we prioritize
             # completing an episode so we can calculate the returns
             print(f"PPO Gathering: [{epoch+1}/{num_epochs}]")
-            while (self.iterations - start_iterations) < steps_per_epoch:
+            while (self.iterations - start_iterations) < steps_per_rollout:
                 state = environment.reset()
                 done = False
                 entropy = 0
@@ -200,75 +202,76 @@ class PPOAgent:
 
     def train(self):
         self.model.train()
-        self.memory.generate_batches()
-        num_batches = self.memory.get_num_batches()
-        for batch in tqdm(self.memory.sample(), total=num_batches):
-            # Retrieve transitions
-            batch = PPOTransition(*zip(*batch))
-            states = torch.stack(batch.state).to(self.device)
-            actions = torch.tensor(batch.action).to(self.device)
-            old_log_probs = torch.stack(batch.log_prob).to(self.device)
-            returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
-            advantages = torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
+        for i in tqdm(range(self.num_training_epochs)):
+            self.memory.generate_batches()
+            num_batches = self.memory.get_num_batches()
+            for batch in tqdm(self.memory.sample(), total=num_batches):
+                # Retrieve transitions
+                batch = PPOTransition(*zip(*batch))
+                states = torch.stack(batch.state).to(self.device)
+                actions = torch.tensor(batch.action).to(self.device)
+                old_log_probs = torch.stack(batch.log_prob).to(self.device)
+                returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
+                advantages = torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
 
-            # advantages = returns - old_values
-            # So: old_values = returns - advantages
-            old_values = returns - advantages
+                # advantages = returns - old_values
+                # So: old_values = returns - advantages
+                old_values = returns - advantages
 
-            # Get current policy distribution & values
-            policy, values = self.model(states)
-            distribution = self.get_distribution(policy)
+                # Get current policy distribution & values
+                policy, values = self.model(states)
+                distribution = self.get_distribution(policy)
 
-            # Calculate entropy
-            entropy = distribution.entropy().mean()
-            entropy = self.c2 * entropy
+                # Calculate entropy
+                entropy = distribution.entropy().mean()
+                entropy = self.c2 * entropy
 
-            # Calculate Actor Loss
-            # Get log probabilities of the previously selected actions
-            # On the current version of the model
-            # I.E. pi_new(a_t|s_t)
-            new_log_probs = distribution.log_prob(actions)
+                # Calculate Actor Loss
+                # Get log probabilities of the previously selected actions
+                # On the current version of the model
+                # I.E. pi_new(a_t|s_t)
+                new_log_probs = distribution.log_prob(actions)
 
-            ratio = (new_log_probs - old_log_probs).exp()
-            surr1 = ratio * advantages
-            surr2 = (
-                torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
-                * advantages
-            )
-            actor_loss = torch.min(surr1, surr2).mean()
+                ratio = (new_log_probs - old_log_probs).exp()
+                surr1 = ratio * advantages
+                surr2 = (
+                    torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
+                    * advantages
+                )
+                actor_loss = torch.min(surr1, surr2).mean()
 
-            # Calculate Clipped Critic Loss
-            clipped_values = old_values + (values - old_values).clip(
-                -self.clip_param, self.clip_param
-            )
-            values = nn.functional.mse_loss(returns, values)
-            clipped_values = nn.functional.mse_loss(returns, clipped_values)
-            critic_loss = self.c1 * torch.max(values, clipped_values)
+                # Calculate Clipped Critic Loss
+                clipped_values = old_values + (values - old_values).clip(
+                    -self.clip_param, self.clip_param
+                )
+                values = nn.functional.mse_loss(returns, values)
+                clipped_values = nn.functional.mse_loss(returns, clipped_values)
+                critic_loss = self.c1 * torch.max(values, clipped_values)
 
-            # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
-            # Gradient Descent = -Gradient Ascent
-            loss = -1 * (actor_loss - critic_loss + entropy)
+                # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
+                # Gradient Descent = -Gradient Ascent
+                loss = -1 * (actor_loss - critic_loss + entropy)
 
-            # Optimize the model
-            self.optimizer.zero_grad()
-            loss.backward()
-            ## Gradient Clipping
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
-            self.optimizer.step()
+                # Optimize the model
+                self.optimizer.zero_grad()
+                loss.backward()
+                ## Gradient Clipping
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
+                self.optimizer.step()
 
-            # Calculate approximate form of reverse KL-Divergence
-            # for early stopping. Adapted from:
-            # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
-            with torch.no_grad():
-                log_ratio = new_log_probs - old_log_probs
-                approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu()
+                # Calculate approximate form of reverse KL-Divergence
+                # for early stopping. Adapted from:
+                # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
+                with torch.no_grad():
+                    log_ratio = new_log_probs - old_log_probs
+                    approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu()
 
-            # Store loss values for future plotting
-            self.actor_losses.append(actor_loss.item())
-            self.critic_losses.append(critic_loss.item())
-            self.entropy.append(entropy.item())
-            self.total_losses.append(loss.item())
-            self.approx_kl_divs.append(approx_kl_div.item())
+                # Store loss values for future plotting
+                self.actor_losses.append(actor_loss.item())
+                self.critic_losses.append(critic_loss.item())
+                self.entropy.append(entropy.item())
+                self.total_losses.append(loss.item())
+                self.approx_kl_divs.append(approx_kl_div.item())
 
     def test(self, environment, num_episodes):
         self.model.eval()

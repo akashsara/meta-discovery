@@ -27,20 +27,21 @@ if __name__ == "__main__":
 
     # Config - Model Hyperparameters
     training_config = {
-        "batch_size": 128,
+        "batch_size": 64,
         "log_interval": 1000,
+        "num_training_epochs": 10,
         "gamma": 0.99,  # Discount Factor
         "lambda_": 0.95,  # GAE Parameter
         "clip_param": 0.2,  # Surrogate Clipping Parameter
         "c1": 0.5,  # Loss constant 1
-        "c2": 0.0,  # Loss constant 2
+        "c2": 0.002,  # Loss constant 2
     }
 
     # Config - Training Hyperparameters
     RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 100000
-    STEPS_PER_EPOCH = 5000  # Steps to gather before running PPO (train interval)
-    VALIDATE_EVERY = 50000  # Run intermediate evaluation every N steps
+    NB_TRAINING_STEPS = 1000000
+    STEPS_PER_ROLLOUT = 2500  # Steps to gather before running PPO (train interval)
+    VALIDATE_EVERY = 200000  # Run intermediate evaluation every N steps
     NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
@@ -84,20 +85,19 @@ if __name__ == "__main__":
 
     evaluation_results = {}
 
-    evaluation_results["initial"] = {
-        "n_battles": NB_VALIDATION_EPISODES,
-    }
-    average_rewards, average_episode_rewards = ppo.test(env, NB_VALIDATION_EPISODES)
-    evaluation_results["initial"]["average_rewards"] = average_rewards
-    evaluation_results["initial"]["average_episode_rewards"] = average_episode_rewards
-
-    print(f"INITIAL REWARD: {average_rewards}, {average_episode_rewards}")
+    evaluation_results = utils.gym_env_validate_model(
+        evaluation_results,
+        env,
+        ppo,
+        NB_VALIDATION_EPISODES,
+        f"initial",
+    )
 
     last_validated = 0
-    num_epochs = max(VALIDATE_EVERY // STEPS_PER_EPOCH, 1)
+    num_epochs = max(VALIDATE_EVERY // STEPS_PER_ROLLOUT, 1)
     while ppo.iterations < NB_TRAINING_STEPS:
         # Train Model
-        ppo.fit(env, steps_per_epoch=STEPS_PER_EPOCH, num_epochs=num_epochs)
+        ppo.fit(env, steps_per_rollout=STEPS_PER_ROLLOUT, num_epochs=num_epochs)
 
         # Save Model
         ppo.save(output_dir, reset_trackers=True, create_plots=False)
@@ -109,31 +109,19 @@ if __name__ == "__main__":
             NB_VALIDATION_EPISODES > 0
             and (ppo.iterations - last_validated) >= VALIDATE_EVERY
         ):
-            evaluation_results[f"validation_{ppo.iterations}"] = {
-                "n_battles": NB_VALIDATION_EPISODES,
-            }
-            average_rewards, average_episode_rewards = ppo.test(
-                env, NB_VALIDATION_EPISODES
-            )
-            evaluation_results[f"validation_{ppo.iterations}"][
-                "average_rewards"
-            ] = average_rewards
-            evaluation_results[f"validation_{ppo.iterations}"][
-                "average_episode_rewards"
-            ] = average_episode_rewards
-            print(
-                f"VALIDATION {ppo.iterations} REWARD: {average_rewards}, {average_episode_rewards}"
+            evaluation_results = utils.gym_env_validate_model(
+                evaluation_results,
+                env,
+                ppo,
+                NB_VALIDATION_EPISODES,
+                f"validation_{ppo.iterations}",
             )
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
-        evaluation_results["final"] = {
-            "n_battles": NB_EVALUATION_EPISODES,
-        }
-        average_rewards, average_episode_rewards = ppo.test(env, NB_EVALUATION_EPISODES)
-        evaluation_results["final"]["average_rewards"] = average_rewards
-        evaluation_results["final"]["average_episode_rewards"] = average_episode_rewards
-        print(f"FINAL REWARD: {average_rewards}, {average_episode_rewards}")
+        evaluation_results = utils.gym_env_validate_model(
+            evaluation_results, env, ppo, NB_EVALUATION_EPISODES, "final"
+        )
 
     with open(os.path.join(output_dir, "results.json"), "w") as fp:
         json.dump(evaluation_results, fp)
