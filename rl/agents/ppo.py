@@ -62,8 +62,8 @@ class PPOAgent:
         self.actor_losses = []
         self.critic_losses = []
         self.entropy = []
-        self.approx_kl_divs = []
         self.total_losses = []
+        self.approx_kl_divs = []
 
         # Print model
         print(self.model)
@@ -255,23 +255,22 @@ class PPOAgent:
             self.optimizer.zero_grad()
             loss.backward()
             ## Gradient Clipping
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), .5)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
             self.optimizer.step()
 
-            # Calculate approximate form of reverse KL-Divergence 
-            # for early stopping
-            # Adapted from: 
+            # Calculate approximate form of reverse KL-Divergence
+            # for early stopping. Adapted from:
             # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
-            with torch.zero_grad():
+            with torch.no_grad():
                 log_ratio = new_log_probs - old_log_probs
-                approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu()
 
             # Store loss values for future plotting
             self.actor_losses.append(actor_loss.item())
             self.critic_losses.append(critic_loss.item())
             self.entropy.append(entropy.item())
             self.total_losses.append(loss.item())
-            self.approx_kl_divs.append(approx_kl_div)
+            self.approx_kl_divs.append(approx_kl_div.item())
 
     def test(self, environment, num_episodes):
         self.model.eval()
@@ -367,9 +366,9 @@ class PPOAgent:
                 "episode_lengths": torch.tensor(self.episode_lengths),
                 "actor_loss": torch.tensor(self.actor_losses),
                 "critic_loss": torch.tensor(self.critic_losses),
-                "approx_kl_divs": torch.tensor(self.approx_kl_divs),
                 "entropy": torch.tensor(self.entropy),
                 "total_loss": torch.tensor(self.total_losses),
+                "approx_kl_divs": torch.tensor(self.approx_kl_divs),
             },
             os.path.join(output_path, f"statistics_{suffix}.pt"),
         )
@@ -379,8 +378,8 @@ class PPOAgent:
             self.actor_losses = []
             self.critic_losses = []
             self.entropy = []
-            self.approx_kl_divs = []
             self.total_losses = []
+            self.approx_kl_divs = []
 
     def save(self, output_path, reset_trackers=False, create_plots=True):
         self.plot_and_save_metrics(
