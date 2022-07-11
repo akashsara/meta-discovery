@@ -83,9 +83,13 @@ class DQNAgent:
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
             print("Load successful.")
 
+    def preprocess(self, state, environment):
+        # state = list(environment.decode(state))
+        state = torch.tensor(state, dtype=torch.float32)
+        return state.to(self.device)
+
     def fit(self, environment, num_training_steps):
-        state = environment.reset()
-        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+        state = self.preprocess(environment.reset(), environment)
         self.policy_network.train()
         self.target_network.eval()
         loss = None
@@ -93,7 +97,7 @@ class DQNAgent:
         for i in tqdm(range(num_training_steps)):
             # Get q_values
             with torch.no_grad():
-                q_values = self.policy_network(state.to(self.device))
+                q_values = self.policy_network(state)
             # Use policy
             action = int(self.policy.select_action(q_values))
             # Play move
@@ -102,7 +106,7 @@ class DQNAgent:
             if done:
                 next_state = None
             else:
-                next_state = torch.tensor(next_state, dtype=torch.float32).unsqueeze(0)
+                next_state = self.preprocess(next_state, environment)
 
             # Save transition in memory
             self.memory.push(state, action, next_state, reward, None)
@@ -110,8 +114,7 @@ class DQNAgent:
             if done:
                 self.episode_lengths.append(current_episode_length)
                 current_episode_length = 0
-                state = environment.reset()
-                state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+                state = self.preprocess(environment.reset(), environment)
             # Else just use the next state as the current state
             else:
                 state = next_state
@@ -174,11 +177,9 @@ class DQNAgent:
 
         # Compute the next state transitions for non-final states
         non_final_next_states = []
-        non_final_action_masks = []
-        for mask, state in zip(batch.action_mask, batch.next_state):
+        for state in batch.next_state:
             if state is not None:
                 non_final_next_states.append(state)
-                non_final_action_masks.append(mask)
 
         # (non_final_batch_size, state_size)
         non_final_next_states = (
@@ -194,7 +195,7 @@ class DQNAgent:
         # V(s) = 0 for all final states
         next_state_values = torch.zeros(self.batch_size, device=self.device)
         next_state_values[non_final_mask] = (
-            (self.target_network(non_final_next_states)).max(1)[0].detach()
+            self.target_network(non_final_next_states).max(1)[0].detach()
         )
 
         # Compute the expected Q values: (max_a Q(s_t+1, a) * gamma) + reward
@@ -224,23 +225,24 @@ class DQNAgent:
     def test(self, environment, num_episodes):
         self.policy_network.eval()
         all_rewards = []
+        episode_rewards = []
         for episode in tqdm(range(num_episodes)):
             done = False
             state = environment.reset()
+            episode_reward = 0
             while not done:
-                # action_mask = environment.get_action_mask().to(self.device)
-                # Get q_values
+                state = self.preprocess(state, environment)
                 with torch.no_grad():
-                    state = torch.tensor(
-                        state, device=self.device, dtype=torch.float32
-                    ).unsqueeze(0)
                     q_values = self.policy_network(state)
                 # Use policy
                 action = int(self.policy.greedy_action(q_values))
                 # Play move
                 state, reward, done, info = environment.step(action)
-            all_rewards.append(reward)
-        return np.mean(all_rewards)
+                all_rewards.append(reward)
+                episode_reward += reward
+            episode_rewards.append(episode_reward)
+        print(episode_rewards)
+        return np.mean(all_rewards), np.mean(episode_rewards)
 
     def plot_and_save_metrics(
         self, output_path, is_cumulative=False, reset_trackers=False, create_plots=True

@@ -22,7 +22,7 @@ from rl.policy import (
 
 if __name__ == "__main__":
     # Config - Versioning
-    experiment_name = f"TestTaxiDQN"
+    experiment_name = f"TestLanderDQN"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -31,10 +31,10 @@ if __name__ == "__main__":
     # Config - Model Hyperparameters
     training_config = {
         "batch_size": 32,
-        "gamma": 0.9,
-        "tau": 100,  # AKA Target Model Update
+        "gamma": 0.99,
+        "tau": 1e-2,  # AKA Target Model Update
         "train_interval": 1,
-        "log_interval": 1000,
+        "log_interval": 5000,
         "warmup_steps": 1000,
     }
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # Config = Model Setup
     MODEL = simple_models.SimpleModel
     MODEL_KWARGS = {}
-    memory_config = {"capacity": 10000}
+    memory_config = {"capacity": 50000}
 
     # Config - Policy Setup
     # POLICY = LinearDecayEpsilonGreedyPolicy
@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
-    OPTIMIZER_KWARGS = {"lr": 0.00025}
+    OPTIMIZER_KWARGS = {"lr": 1e-4}
 
     # Config - Loss Setup
     LOSS = nn.SmoothL1Loss
@@ -80,12 +80,12 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
 
     # Setup player
-    env = gym.make("Taxi-v3")
+    env = gym.make("LunarLander-v2")
 
     # Grab some values from the environment to setup our model
     print(env.action_space, env.observation_space)
     MODEL_KWARGS["n_actions"] = env.action_space.n
-    MODEL_KWARGS["n_obs"] = 1
+    MODEL_KWARGS["n_obs"] = 8
 
     # Setup memory
     memory = SequentialMemory(**memory_config)
