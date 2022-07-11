@@ -5,8 +5,8 @@ import asyncio
 from poke_env.player.random_player import RandomPlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
-from agents.dqn_agent import SimpleRLPlayerTesting
-from agents.dqn_full_state_agent import FullStatePlayerTesting
+from agents.simple_agent import SimpleRLPlayerTesting
+from agents.full_state_agent import FullStatePlayerTesting
 
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.server_configuration import ShowdownServerConfiguration

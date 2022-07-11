@@ -14,7 +14,7 @@ from poke_env.player_configuration import PlayerConfiguration
 from poke_env.utils import to_id_str
 
 from models import simple_models
-from agents.dqn_agent import SimpleRLPlayer
+from agents.simple_agent import SimpleRLPlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.dqn import DQNAgent
