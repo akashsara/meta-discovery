@@ -225,7 +225,7 @@ class PPOAgent:
                 old_values = returns - advantages
 
                 # Normalize advantages
-                if self.normalize_advantage:
+                if self.normalize_advantages:
                     advantages = (advantages - advantages.mean()) / (
                         advantages.std() + 1e-8
                     )
