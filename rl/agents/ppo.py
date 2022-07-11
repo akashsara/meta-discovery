@@ -29,6 +29,8 @@ class PPOAgent:
         c2=0.001,
         normalize_advantages=False,
         log_interval=100,
+        last_n_steps=1000,
+        last_n_episodes=50,
         load_dict_path=None,
     ):
         # Setup training hyperparameters
@@ -36,6 +38,8 @@ class PPOAgent:
         self.batch_size = batch_size
         self.log_interval = log_interval
         self.num_training_epochs = num_training_epochs
+        self.last_n_steps = last_n_steps
+        self.last_n_episodes = last_n_episodes
 
         # Setup model hyperparameters
         self.gamma = gamma
@@ -62,6 +66,7 @@ class PPOAgent:
 
         # Setup some variables to track things
         self.rewards = []
+        self.episode_rewards = []
         self.episode_lengths = []
         self.actor_losses = []
         self.critic_losses = []
@@ -100,7 +105,7 @@ class PPOAgent:
                 episode_log_probs = []
                 episode_values = []
                 episode_done_mask = []
-                episode_return = 0
+                total_episode_reward = 0
                 # Play one full episode
                 while not done:
                     if environment.skip_current_step():
@@ -123,7 +128,7 @@ class PPOAgent:
                         # Play Move
                         next_state, reward, done, _ = environment.step(int(action))
                         # Store variables needed for learning
-                        episode_return += reward
+                        total_episode_reward += reward
                         entropy += step_entropy
                         episode_states.append(state)
                         episode_rewards.append(reward)
@@ -142,8 +147,9 @@ class PPOAgent:
                     # Log output to console
                     if self.iterations % self.log_interval == 0:
                         print(
-                            f"[{self.iterations}/{total_iterations}] Average Reward: {np.mean(self.rewards):.4f}\tAverage Episode Length: {np.mean(self.episode_lengths):.2f}\tAverage Loss: {np.mean(self.total_losses):.4f}"
+                            f"[{self.iterations}/{total_iterations}] Mean Episode Reward: {np.mean(self.episode_rewards[self.last_n_episodes:]):.4f}\tMean Reward: {np.mean(self.rewards[self.last_n_steps:]):.4f}\tMean Episode Length: {np.mean(self.episode_lengths[self.last_n_episodes:]):.2f}\tMean Loss: {np.mean(self.total_losses):.4f}"
                         )
+                self.episode_rewards.append(total_episode_reward)
                 self.episode_lengths.append(episode_length)
                 # Compute GAE at the end of the episode
                 next_state = next_state.to(self.device)
