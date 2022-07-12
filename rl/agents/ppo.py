@@ -1,15 +1,17 @@
 # https://github.com/higgsfield/RL-Adventure-2/blob/master/3.ppo.ipynb
+# https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
+import os
+import sys
+
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
-import sys
 from tqdm import tqdm
-import numpy as np
-import os
 
 sys.path.append("./")
-from rl.memory import PPOTransition
 import graphics
+from rl.memory import PPOMemory
 
 
 class PPOAgent:
@@ -17,17 +19,21 @@ class PPOAgent:
         self,
         model,
         optimizer,
-        memory,
+        steps_per_rollout,
+        state_size,
+        n_actions,
         model_kwargs={},
         optimizer_kwargs={},
         batch_size=32,
         num_training_epochs=1,
         gamma=0.99,
-        lambda_=0.95,
+        gae_lambda=0.95,
         clip_param=0.2,
+        value_clip_param=0.2,
         c1=0.5,
         c2=0.001,
         normalize_advantages=False,
+        use_action_mask=True,
         log_interval=100,
         last_n_steps=1000,
         last_n_episodes=50,
@@ -40,16 +46,15 @@ class PPOAgent:
         self.num_training_epochs = num_training_epochs
         self.last_n_steps = last_n_steps
         self.last_n_episodes = last_n_episodes
+        self.use_action_mask = use_action_mask
 
         # Setup model hyperparameters
         self.gamma = gamma
-        self.lambda_ = lambda_
         self.clip_param = clip_param
+        self.value_clip_param = value_clip_param
         self.c1 = c1
         self.c2 = c2
         self.normalize_advantages = normalize_advantages
-
-        self.memory = memory
 
         # Setup device
         self.gpu = torch.cuda.is_available()
@@ -57,6 +62,30 @@ class PPOAgent:
 
         # Setup policy & target networks
         self.model = model(**model_kwargs)
+
+        # Fix the number of steps per rollout
+        self.steps_per_rollout = steps_per_rollout
+
+        # Ensure that batch size is a factor of memory size
+        if self.steps_per_rollout % self.batch_size != 0:
+            raise ValueError("steps_per_rollout must be divisible by batch_size.")
+
+        # Setup memory
+        self.memory = PPOMemory(
+            batch_size=self.batch_size,
+            gamma=self.gamma,
+            gae_lambda=gae_lambda,
+            memory_size=steps_per_rollout,
+            state_size=state_size,
+            n_actions=n_actions,
+        )
+
+        # We use this to track episode states if we cut off mid-episode
+        self.last_episode_start = False
+
+        # Variables to track episode statistics
+        self.current_episode_length = 0
+        self.current_episode_returns = 0
 
         # Setup optimizer
         self.optimizer = optimizer(self.model.parameters(), **optimizer_kwargs)
@@ -66,7 +95,7 @@ class PPOAgent:
 
         # Setup some variables to track things
         self.rewards = []
-        self.episode_rewards = []
+        self.episode_returns = []
         self.episode_lengths = []
         self.actor_losses = []
         self.critic_losses = []
@@ -84,102 +113,98 @@ class PPOAgent:
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
             print("Load successful.")
 
-    def fit(self, environment, steps_per_rollout, num_epochs, do_training=True):
-        total_iterations = self.iterations + (steps_per_rollout * num_epochs)
-        for epoch in range(num_epochs):
-            self.model.eval()
-            start_iterations = self.iterations
-            # Play steps_per_rollout steps
-            # Note that we may go slightly above this as we prioritize
-            # completing an episode so we can calculate the returns
-            print(f"PPO Gathering: [{epoch+1}/{num_epochs}]")
-            while (self.iterations - start_iterations) < steps_per_rollout:
-                state = environment.reset()
-                done = False
-                entropy = 0
-                episode_length = 0
-                episode_states = []
-                episode_rewards = []
-                episode_actions = []
-                episode_action_masks = []
-                episode_log_probs = []
-                episode_values = []
-                episode_done_mask = []
-                total_episode_reward = 0
-                # Play one full episode
-                while not done:
-                    if environment.skip_current_step():
-                        print("SKIP STEP")
-                        action = 0
-                        next_state, reward, done, _ = environment.step(action)
-                    else:
-                        # Make action mask
-                        action_mask = environment.get_action_mask().to(self.device)
-                        # Get policy & value
-                        policy, value = self.model(state.to(self.device))
-                        # Get policy distribution
-                        distribution = self.get_distribution(policy, action_mask)
-                        # Sample action
-                        action = distribution.sample().detach()
-                        # Get log probabilities
-                        log_probs = distribution.log_prob(action)
-                        # Get entropy
-                        step_entropy = distribution.entropy().mean()
-                        # Play Move
-                        next_state, reward, done, _ = environment.step(int(action))
-                        # Store variables needed for learning
-                        total_episode_reward += reward
-                        entropy += step_entropy
-                        episode_states.append(state)
-                        episode_rewards.append(reward)
-                        episode_actions.append(action)
-                        episode_action_masks.append(action_mask)
-                        episode_log_probs.append(log_probs)
-                        episode_values.append(value)
-                        episode_done_mask.append(1 - done)
-                        # Store for later logging/graphs
-                        self.rewards.append(reward)
-                    # Transition to next state
-                    state = next_state
-                    # Housekeeping
-                    episode_length += 1
-                    self.iterations += 1
-                    # Log output to console
-                    if self.iterations % self.log_interval == 0:
-                        print(
-                            f"[{self.iterations}/{total_iterations}] Mean Episode Reward: {np.mean(self.episode_rewards[self.last_n_episodes:]):.4f}\tMean Reward: {np.mean(self.rewards[self.last_n_steps:]):.4f}\tMean Episode Length: {np.mean(self.episode_lengths[self.last_n_episodes:]):.2f}\tMean Loss: {np.mean(self.total_losses):.4f}"
-                        )
-                self.episode_rewards.append(total_episode_reward)
-                self.episode_lengths.append(episode_length)
-                # Compute GAE at the end of the episode
-                next_state = next_state.to(self.device)
-                _, next_value = self.model(next_state)
-                episode_returns = self.compute_advantage(
-                    next_value, episode_rewards, episode_done_mask, episode_values
-                )
-                # Organize data for storage
-                returns = torch.stack(episode_returns).detach()
-                log_probs = torch.stack(episode_log_probs).detach()
-                values = torch.stack(episode_values).detach()
-                states = torch.stack(episode_states)
-                actions = torch.stack(episode_actions)
-                action_masks = torch.stack(episode_action_masks).detach()
-                advantages = returns - values
-                # Store episode information in memory
-                self.memory.push(
-                    states, actions, action_masks, log_probs, returns, advantages
-                )
+    def fit(self, environment, total_steps, do_training=True):
+        self.model.eval()
+        total_iterations = self.iterations + total_steps
+        if total_steps % self.steps_per_rollout != 0:
+            raise ValueError("Total steps must be divisible by steps_per_rollout.")
+        num_rollouts = total_steps // self.steps_per_rollout
+        # Fresh start - Ignore previously running battles
+        state = environment.reset()
+        self.last_episode_start = False
+        self.current_episode_length = 0
+        self.current_episode_returns = 0
+        for rollout in range(num_rollouts):
+            # Clear memory so that we have fresh rollouts
+            self.memory.clear()
+            # Gather fresh data
+            current_step = rollout * self.steps_per_rollout
+            print(f"Gathering: [{current_step}/{total_steps}]")
+            state = self.collect_rollouts(environment, state, total_iterations)
             # Run PPO Training
             if do_training:
-                print(f"PPO Training: [{epoch+1}/{num_epochs}]")
+                print(f"PPO Training: [{rollout+1}/{num_rollouts}]")
                 self.train()
-                # Clear memory
-                self.memory.clear()
+
+    def collect_rollouts(self, environment, state, total_iterations):
+        for step in range(self.steps_per_rollout):
+            # Don't use transition in memory
+            # TODO: Remove after bugfix
+            if environment.skip_current_step():
+                print("SKIP STEP")
+                action = 0
+                next_state, reward, done, _ = environment.step(action)
+            else:
+                with torch.no_grad():
+                    state = state.to(self.device)
+                    action_mask = None
+                    if self.use_action_mask:
+                        action_mask = environment.action_masks()
+                    # Get policy & value
+                    policy, value = self.model(state)
+                    # Get policy distribution
+                    distribution = self.get_distribution(policy, action_mask)
+                    # Sample action
+                    action = distribution.sample().detach()
+                    # Get log probabilities
+                    log_probs = distribution.log_prob(action)
+                next_state, reward, done, _ = environment.step(int(action))
+                self.memory.push(
+                    state,
+                    action,
+                    reward,
+                    self.last_episode_start,
+                    value,
+                    log_probs,
+                    action_mask,
+                )
+            # Handle state transitions
+            if done:
+                state = environment.reset()
+            else:
+                state = next_state
+            # Track stuff for future
+            self.last_episode_start = done
+            self.iterations += 1
+            self.current_episode_length += 1
+            self.current_episode_returns += reward
+            self.rewards.append(reward)
+
+            # Add episodic metric trackers
+            if done:
+                self.episode_lengths.append(self.current_episode_length)
+                self.episode_returns.append(self.current_episode_returns)
+                self.current_episode_length = 0
+                self.current_episode_returns = 0
+
+            if self.iterations % self.log_interval == 0:
+                print(
+                    f"[{self.iterations}/{total_iterations}] Mean Episode Reward: {np.mean(self.episode_returns[-self.last_n_episodes:]):.4f}\tMean Reward: {np.mean(self.rewards[-self.last_n_steps:]):.4f}\tMean Episode Length: {np.mean(self.episode_lengths[-self.last_n_episodes:]):.2f}\tMean Loss: {np.mean(self.total_losses[-self.last_n_episodes:]):.4f}"
+                )
+        with torch.no_grad():
+            # Compute value for the last timestep
+            # Masking is not needed here, the choice of action doesn't matter.
+            # We only want the value of the current observation.
+            state = state.to(self.device)
+            _, value = self.model(state)
+        # Compute GAE
+        self.memory.compute_returns_and_advantage(last_value=value, done=done)
+        return state
 
     def get_distribution(self, policy, action_mask=None):
         """Stochastic Action Selection"""
         # Apply action mask if it exists
-        if action_mask:
+        if action_mask is not None:
             policy = policy + action_mask
         # Create distribution
         distribution = Categorical(probs=policy.softmax(dim=-1))
@@ -188,47 +213,25 @@ class PPOAgent:
     def get_action(self, policy, action_mask=None):
         """Deterministic Action Selection"""
         # Apply action mask if it exists
-        if action_mask:
+        if action_mask is not None:
             policy = policy + action_mask
         # Sample action
         action = policy.argmax(dim=-1).detach().cpu().numpy()
         return action
 
-    def compute_advantage(self, next_values, rewards, masks, values):
-        """Uses Generalized Advantage Estimation"""
-        values = values + [next_values]
-        gae = 0
-        returns = []
-        for step in reversed(range(len(rewards))):
-            delta = (
-                rewards[step]
-                + (self.gamma * values[step + 1] * masks[step])
-                - values[step]
-            )
-            gae = delta + self.gamma * self.lambda_ * masks[step] * gae
-            returns.insert(0, gae + values[step])
-        return returns
-
     def train(self):
         self.model.train()
-        for i in tqdm(range(self.num_training_epochs)):
-            self.memory.generate_batches()
-            num_batches = self.memory.get_num_batches()
-            for batch in tqdm(self.memory.sample(), total=num_batches):
+        for epoch in tqdm(range(self.num_training_epochs)):
+            # Do a complete pass through the memory
+            for batch in self.memory.sample():
                 # Retrieve transitions
-                batch = PPOTransition(*zip(*batch))
-                states = torch.stack(batch.state).to(self.device)
-                actions = torch.tensor(batch.action).to(self.device)
-                action_masks = torch.stack(batch.action_mask).to(self.device)
-                old_log_probs = torch.stack(batch.log_prob).to(self.device)
-                returns = torch.tensor(batch.return_).unsqueeze(dim=1).to(self.device)
-                advantages = (
-                    torch.tensor(batch.advantage).unsqueeze(dim=1).to(self.device)
-                )
-
-                # advantages = returns - old_values
-                # So: old_values = returns - advantages
-                old_values = returns - advantages
+                states = torch.tensor(batch["states"]).to(self.device)
+                old_values = torch.tensor(batch["values"]).to(self.device)
+                actions = torch.tensor(batch["actions"]).to(self.device)
+                action_masks = torch.tensor(batch["action_masks"]).to(self.device)
+                old_log_probs = torch.tensor(batch["log_probs"]).to(self.device)
+                returns = torch.tensor(batch["returns"]).to(self.device)
+                advantages = torch.tensor(batch["advantages"]).to(self.device)
 
                 # Normalize advantages
                 if self.normalize_advantages:
@@ -238,37 +241,35 @@ class PPOAgent:
 
                 # Get current policy distribution & values
                 policy, values = self.model(states)
-                distribution = self.get_distribution(policy, action_masks)
+                if self.use_action_mask:
+                    distribution = self.get_distribution(policy, action_masks)
+                else:
+                    distribution = self.get_distribution(policy)
+                new_log_probs = distribution.log_prob(actions)
 
                 # Calculate entropy
                 entropy = distribution.entropy().mean()
-                entropy = self.c2 * entropy
+                entropy = -(self.c2 * entropy)
 
                 # Calculate Actor Loss
-                # Get log probabilities of the previously selected actions
-                # On the current version of the model
-                # I.E. pi_new(a_t|s_t)
-                new_log_probs = distribution.log_prob(actions)
-
                 ratio = (new_log_probs - old_log_probs).exp()
                 surr1 = ratio * advantages
                 surr2 = (
                     torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
                     * advantages
                 )
-                actor_loss = torch.min(surr1, surr2).mean()
+                actor_loss = -torch.min(surr1, surr2).mean()
 
                 # Calculate Clipped Critic Loss
-                clipped_values = old_values + (values - old_values).clip(
-                    -self.clip_param, self.clip_param
+                clipped_values = old_values + torch.clamp(
+                    values - old_values, -self.value_clip_param, self.value_clip_param
                 )
-                values = nn.functional.mse_loss(returns, values)
                 clipped_values = nn.functional.mse_loss(returns, clipped_values)
-                critic_loss = self.c2 * torch.max(values, clipped_values)
+                critic_loss = self.c2 * clipped_values
 
                 # Gradient Ascent: Actor Loss - c1*Critic Loss + c2*Entropy
                 # Gradient Descent = -Gradient Ascent
-                loss = -1 * (actor_loss - critic_loss + entropy)
+                loss = actor_loss + critic_loss + entropy
 
                 # Optimize the model
                 self.optimizer.zero_grad()
@@ -302,7 +303,9 @@ class PPOAgent:
             state = environment.reset()
             episode_reward = 0
             while not done:
-                action_mask = environment.get_action_mask().to(self.device)
+                action_mask = None
+                if self.use_action_mask:
+                    action_mask = environment.action_masks()
                 # Get q_values
                 with torch.no_grad():
                     value, policy = self.model(state.to(self.device))
@@ -328,6 +331,8 @@ class PPOAgent:
             average_rewards = x.cumsum() / (np.arange(x.size) + 1)
             x = np.array(self.episode_lengths)
             average_episode_length = x.cumsum() / (np.arange(x.size) + 1)
+            x = np.array(self.episode_returns)
+            average_episode_return = x.cumsum() / (np.arange(x.size) + 1)
             x = np.array(self.actor_losses)
             actor_loss = x.cumsum() / (np.arange(x.size) + 1)
             x = np.array(self.critic_losses)
@@ -349,6 +354,12 @@ class PPOAgent:
                 "episodes",
                 "episode_length",
                 os.path.join(output_path, f"episode_length_{suffix}.jpg"),
+            )
+            graphics.plot_and_save_loss(
+                average_episode_return,
+                "episodes",
+                "episode_return",
+                os.path.join(output_path, f"episode_return_{suffix}.jpg"),
             )
             graphics.plot_and_save_loss(
                 actor_loss,
@@ -385,6 +396,7 @@ class PPOAgent:
             {
                 "reward": torch.tensor(self.rewards),
                 "episode_lengths": torch.tensor(self.episode_lengths),
+                "episode_returns": torch.tensor(self.episode_returns),
                 "actor_loss": torch.tensor(self.actor_losses),
                 "critic_loss": torch.tensor(self.critic_losses),
                 "entropy": torch.tensor(self.entropy),
@@ -396,6 +408,7 @@ class PPOAgent:
         if reset_trackers:
             self.rewards = []
             self.episode_lengths = []
+            self.episode_returns = []
             self.actor_losses = []
             self.critic_losses = []
             self.entropy = []
