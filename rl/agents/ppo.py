@@ -34,18 +34,12 @@ class PPOAgent:
         c2=0.001,
         normalize_advantages=False,
         use_action_mask=True,
-        log_interval=100,
-        last_n_steps=1000,
-        last_n_episodes=50,
         load_dict_path=None,
     ):
         # Setup training hyperparameters
         self.iterations = 0
         self.batch_size = batch_size
-        self.log_interval = log_interval
         self.num_training_epochs = num_training_epochs
-        self.last_n_steps = last_n_steps
-        self.last_n_episodes = last_n_episodes
         self.use_action_mask = use_action_mask
 
         # Setup model hyperparameters
@@ -130,11 +124,19 @@ class PPOAgent:
             # Gather fresh data
             current_step = rollout * self.steps_per_rollout
             print(f"Gathering: [{current_step}/{total_steps}]")
+            episode_idx = len(self.episode_returns)
+            reward_idx = len(self.rewards)
             state = self.collect_rollouts(environment, state, total_iterations)
+            # Log information to console
+            print(
+                f"Mean Episode Reward: {np.mean(self.episode_returns[episode_idx:]):.4f}\tMean Reward: {np.mean(self.rewards[reward_idx:]):.4f}\tMean Episode Length: {np.mean(self.episode_lengths[episode_idx:]):.2f}"
+            )
             # Run PPO Training
             if do_training:
                 print(f"PPO Training: [{rollout+1}/{num_rollouts}]")
+                loss_idx = len(self.total_losses)
                 self.train()
+                print(f"Mean Loss: {np.mean(self.total_losses[loss_idx:]):.4f}")
 
     def collect_rollouts(self, environment, state, total_iterations):
         for step in range(self.steps_per_rollout):
@@ -187,10 +189,6 @@ class PPOAgent:
                 self.current_episode_length = 0
                 self.current_episode_returns = 0
 
-            if self.iterations % self.log_interval == 0:
-                print(
-                    f"[{self.iterations}/{total_iterations}] Mean Episode Reward: {np.mean(self.episode_returns[-self.last_n_episodes:]):.4f}\tMean Reward: {np.mean(self.rewards[-self.last_n_steps:]):.4f}\tMean Episode Length: {np.mean(self.episode_lengths[-self.last_n_episodes:]):.2f}\tMean Loss: {np.mean(self.total_losses[-self.last_n_episodes:]):.4f}"
-                )
         with torch.no_grad():
             # Compute value for the last timestep
             # Masking is not needed here, the choice of action doesn't matter.
@@ -227,11 +225,11 @@ class PPOAgent:
                 # Retrieve transitions
                 states = torch.tensor(batch["states"]).to(self.device)
                 old_values = torch.tensor(batch["values"]).to(self.device)
-                actions = torch.tensor(batch["actions"]).to(self.device)
+                actions = torch.tensor(batch["actions"]).squeeze().to(self.device)
                 action_masks = torch.tensor(batch["action_masks"]).to(self.device)
-                old_log_probs = torch.tensor(batch["log_probs"]).to(self.device)
+                old_log_probs = torch.tensor(batch["log_probs"]).squeeze().to(self.device)
                 returns = torch.tensor(batch["returns"]).to(self.device)
-                advantages = torch.tensor(batch["advantages"]).to(self.device)
+                advantages = torch.tensor(batch["advantages"]).squeeze().to(self.device)
 
                 # Normalize advantages
                 if self.normalize_advantages:
@@ -308,7 +306,7 @@ class PPOAgent:
                     action_mask = environment.action_masks()
                 # Get q_values
                 with torch.no_grad():
-                    value, policy = self.model(state.to(self.device))
+                    policy, value = self.model(state.to(self.device))
                 # Use policy
                 action = int(self.get_action(policy, action_mask))
                 # Play move
