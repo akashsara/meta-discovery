@@ -9,7 +9,6 @@ sys.path.append("./")
 from agents.env_player import Gen8EnvSinglePlayerFixed
 from poke_env.player.env_player import Gen8EnvSinglePlayer
 
-
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
 class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
@@ -57,7 +56,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
             battle, fainted_value=2, hp_value=1, victory_value=30
         )
 
-    def get_action_mask(self):
+    def action_masks(self):
         return self.mask
 
     def skip_current_step(self):

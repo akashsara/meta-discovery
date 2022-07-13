@@ -22,6 +22,7 @@ class PPOAgent:
         steps_per_rollout,
         state_size,
         n_actions,
+        memory_size,
         model_kwargs={},
         optimizer_kwargs={},
         batch_size=32,
@@ -69,7 +70,7 @@ class PPOAgent:
             batch_size=self.batch_size,
             gamma=self.gamma,
             gae_lambda=gae_lambda,
-            memory_size=steps_per_rollout,
+            memory_size=memory_size,
             state_size=state_size,
             n_actions=n_actions,
         )

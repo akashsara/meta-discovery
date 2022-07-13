@@ -557,7 +557,7 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
 
         return torch.tensor(mask).float()
 
-    def get_action_mask(self):
+    def action_masks(self):
         return self.mask
 
 
