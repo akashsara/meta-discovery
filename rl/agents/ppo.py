@@ -123,10 +123,12 @@ class PPOAgent:
             self.memory.clear()
             # Gather fresh data
             current_step = rollout * self.steps_per_rollout
-            print(f"Gathering: [{current_step}/{total_steps}]")
+            print(
+                f"Gathering: Current: [{current_step}/{total_steps}]\tTotal: [{self.iterations}/{total_iterations}]"
+            )
             episode_idx = len(self.episode_returns)
             reward_idx = len(self.rewards)
-            state = self.collect_rollouts(environment, state, total_iterations)
+            state = self.collect_rollouts(environment, state)
             # Log information to console
             print(
                 f"Mean Episode Reward: {np.mean(self.episode_returns[episode_idx:]):.4f}\tMean Reward: {np.mean(self.rewards[reward_idx:]):.4f}\tMean Episode Length: {np.mean(self.episode_lengths[episode_idx:]):.2f}"
@@ -138,7 +140,7 @@ class PPOAgent:
                 self.train()
                 print(f"Mean Loss: {np.mean(self.total_losses[loss_idx:]):.4f}")
 
-    def collect_rollouts(self, environment, state, total_iterations):
+    def collect_rollouts(self, environment, state):
         for step in range(self.steps_per_rollout):
             # Don't use transition in memory
             # TODO: Remove after bugfix
@@ -227,7 +229,9 @@ class PPOAgent:
                 old_values = torch.tensor(batch["values"]).to(self.device)
                 actions = torch.tensor(batch["actions"]).squeeze().to(self.device)
                 action_masks = torch.tensor(batch["action_masks"]).to(self.device)
-                old_log_probs = torch.tensor(batch["log_probs"]).squeeze().to(self.device)
+                old_log_probs = (
+                    torch.tensor(batch["log_probs"]).squeeze().to(self.device)
+                )
                 returns = torch.tensor(batch["returns"]).to(self.device)
                 advantages = torch.tensor(batch["advantages"]).squeeze().to(self.device)
 
