@@ -160,14 +160,15 @@ class PPOAgent:
                 action = distribution.sample().detach()
                 # Get log probabilities
                 log_probs = distribution.log_prob(action)
-            next_state, reward, done, _ = environment.step(int(action))
+                action = int(action)
+            next_state, reward, done, _ = environment.step(action)
             self.memory.push(
-                state,
+                state.cpu(),
                 action,
                 reward,
                 self.last_episode_start,
-                value,
-                log_probs,
+                value.cpu(),
+                log_probs.cpu(),
                 action_mask,
             )
             # Handle state transitions
@@ -202,7 +203,7 @@ class PPOAgent:
         """Stochastic Action Selection"""
         # Apply action mask if it exists
         if action_mask is not None:
-            policy = policy + action_mask
+            policy = policy + action_mask.to(self.device)
         # Create distribution
         distribution = Categorical(probs=policy.softmax(dim=-1))
         return distribution
