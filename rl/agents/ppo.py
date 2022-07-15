@@ -172,7 +172,7 @@ class PPOAgent:
                     self.last_episode_start,
                     value.cpu(),
                     log_probs.cpu(),
-                    action_mask.cpu(),
+                    action_mask,
                 )
             # Handle state transitions
             if done:
