@@ -154,7 +154,7 @@ class PPOAgent:
                     state = state.to(self.device)
                     action_mask = None
                     if self.use_action_mask:
-                        action_mask = environment.action_masks()
+                        action_mask = environment.action_masks().to(self.device)
                     # Get policy & value
                     policy, value = self.model(state)
                     # Get policy distribution

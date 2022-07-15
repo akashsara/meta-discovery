@@ -151,7 +151,7 @@ class PPOAgent:
                 state = self.preprocess(state, environment).to(self.device)
                 action_mask = None
                 if self.use_action_mask:
-                    action_mask = environment.action_masks()
+                    action_mask = environment.action_masks().to(self.device)
                 # Get policy & value
                 policy, value = self.model(state)
                 # Get policy distribution
@@ -169,7 +169,11 @@ class PPOAgent:
                 self.last_episode_start,
                 value.cpu(),
                 log_probs.cpu(),
+<<<<<<< HEAD
                 action_mask,
+=======
+                action_mask.cpu(),
+>>>>>>> 4c4f1b19ad6dea7743da7e7dca85b485ff476f98
             )
             # Handle state transitions
             if done:
