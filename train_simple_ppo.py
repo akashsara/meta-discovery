@@ -43,6 +43,7 @@ if __name__ == "__main__":
     # Config - Versioning
     training_opponent = "random"  # random, max, smart
     experiment_name = f"Simple_PPO_Base_v1"
+    server_port = 8000
     hash_name = str(hash(experiment_name))[2:12]
     expt_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
     print(f"Experiment: {experiment_name}\t Time:{expt_time}")
@@ -85,6 +86,10 @@ if __name__ == "__main__":
     # Set random seed
     np.random.seed(RANDOM_SEED)
     _ = torch.manual_seed(RANDOM_SEED)
+
+    # Setup server configuration
+    # Maintain servers on different ports to avoid Compute Canada errors
+    server_config = utils.generate_server_configuration(server_port)
 
     # Setup agent usernames for connecting to local showdown
     # This lets us train multiple agents while connecting to the same server

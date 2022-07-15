@@ -1,5 +1,16 @@
 import os
 import torch
+from collections import namedtuple
+
+
+def generate_server_configuration(port):
+    ServerConfiguration = namedtuple(
+        "ServerConfiguration", ["server_url", "authentication_url"]
+    )
+    LocalhostServerConfiguration = ServerConfiguration(
+        f"localhost:{port}", "https://play.pokemonshowdown.com/action.php?"
+    )
+    return LocalhostServerConfiguration
 
 
 def poke_env_validate_model(
