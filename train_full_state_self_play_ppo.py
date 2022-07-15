@@ -93,7 +93,7 @@ if __name__ == "__main__":
         "c1": 0.5,  # Loss constant 1
         "c2": 0.002,  # Loss constant 2
         "normalize_advantages": False,
-        "use_action_mask": False,
+        "use_action_mask": True,
         "memory_size": STEPS_PER_ROLLOUT * 2,  # Since selfplay
     }
 
