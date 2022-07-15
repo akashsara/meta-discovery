@@ -146,6 +146,7 @@ if __name__ == "__main__":
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent1,
+        server_configuration=server_config,
     )
     config["create"] = False
     player2 = FullStatePlayer(
@@ -153,6 +154,7 @@ if __name__ == "__main__":
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent2,
+        server_configuration=server_config,
     )
     # Setup independent player for testing
     test_player = FullStatePlayer(
@@ -160,17 +162,24 @@ if __name__ == "__main__":
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=test_agent,
+        server_configuration=server_config,
     )
 
     # Setup opponents
     random_agent = RandomPlayer(
-        battle_format="gen8randombattle", player_configuration=rand_player
+        battle_format="gen8randombattle",
+        player_configuration=rand_player,
+        server_configuration=server_config,
     )
     max_damage_agent = MaxDamagePlayer(
-        battle_format="gen8randombattle", player_configuration=max_player
+        battle_format="gen8randombattle",
+        player_configuration=max_player,
+        server_configuration=server_config,
     )
     smart_max_damage_agent = SmartMaxDamagePlayer(
-        battle_format="gen8randombattle", player_configuration=smax_player
+        battle_format="gen8randombattle",
+        player_configuration=smax_player,
+        server_configuration=server_config,
     )
 
     # Grab some values from the environment to setup our model
