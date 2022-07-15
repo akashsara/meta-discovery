@@ -169,11 +169,7 @@ class PPOAgent:
                 self.last_episode_start,
                 value.cpu(),
                 log_probs.cpu(),
-<<<<<<< HEAD
                 action_mask,
-=======
-                action_mask.cpu(),
->>>>>>> 4c4f1b19ad6dea7743da7e7dca85b485ff476f98
             )
             # Handle state transitions
             if done:
@@ -216,7 +212,7 @@ class PPOAgent:
         """Deterministic Action Selection"""
         # Apply action mask if it exists
         if action_mask is not None:
-            policy = policy + action_mask
+            policy = policy + action_mask.to(self.device)
         # Sample action
         action = policy.argmax(dim=-1).detach().cpu().numpy()
         return action

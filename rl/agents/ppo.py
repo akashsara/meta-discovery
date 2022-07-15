@@ -216,7 +216,7 @@ class PPOAgent:
         """Deterministic Action Selection"""
         # Apply action mask if it exists
         if action_mask is not None:
-            policy = policy + action_mask
+            policy = policy + action_mask.to(self.device)
         # Sample action
         action = policy.argmax(dim=-1).detach().cpu().numpy()
         return action
