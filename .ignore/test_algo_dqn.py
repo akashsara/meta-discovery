@@ -13,7 +13,7 @@ import torch.nn as nn
 import gym
 
 from models import simple_models
-from rl.agents.dqn_gym_compatible import DQNAgent
+from rl.agents.sanity_check.dqn_gym_compatible import DQNAgent
 from rl.memory import SequentialMemory
 from rl.policy import (
     ExponentialDecayEpsilonGreedyPolicy,

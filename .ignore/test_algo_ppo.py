@@ -14,7 +14,7 @@ import torch.nn as nn
 
 import utils
 from models import simple_models
-from rl.agents.ppo_gym_compatible import PPOAgent
+from rl.agents.sanity_check.ppo_gym_compatible import PPOAgent
 
 if __name__ == "__main__":
     # Config - Versioning
