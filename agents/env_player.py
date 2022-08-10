@@ -13,8 +13,9 @@ class Gen8EnvSinglePlayerFixed(Gen8EnvSinglePlayer):
 
     def __init__(self, *args, **kwargs):
         super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
+        self.done_training = False
 
-    def _action_to_move(self, action: int, battle: Battle) -> BattleOrder:
+    def action_to_move(self, action: int, battle: Battle) -> BattleOrder:
         """Converts actions to move orders.
 
         The conversion is done as follows:
@@ -64,14 +65,14 @@ class Gen8EnvSinglePlayerFixed(Gen8EnvSinglePlayer):
             and not force_switch
             and len(available_move_ids) == 1
         ):
-            return self.create_order(battle.available_moves[0])
+            return self.agent.create_order(battle.available_moves[0])
         elif (
             action < 4
             and action < len(moves)
             and not force_switch
             and moves[action].id in available_move_ids
         ):
-            return self.create_order(moves[action])
+            return self.agent.create_order(moves[action])
         elif (
             battle.can_z_move
             and battle.active_pokemon
@@ -79,26 +80,26 @@ class Gen8EnvSinglePlayerFixed(Gen8EnvSinglePlayer):
             and not force_switch
             and moves[action - 4].id in available_z_moves
         ):
-            return self.create_order(moves[action - 4], z_move=True)
+            return self.agent.create_order(moves[action - 4], z_move=True)
         elif (
             battle.can_mega_evolve
             and 0 <= action - 8 < len(moves)
             and not force_switch
             and moves[action - 8].id in available_move_ids
         ):
-            return self.create_order(moves[action - 8], mega=True)
+            return self.agent.create_order(moves[action - 8], mega=True)
         elif (
             battle.can_dynamax
             and 0 <= action - 12 < len(moves)
             and not force_switch
             and moves[action - 12].id in available_move_ids
         ):
-            return self.create_order(moves[action - 12], dynamax=True)
+            return self.agent.create_order(moves[action - 12], dynamax=True)
         elif (
             not battle.trapped
             and 0 <= action - 16 < len(team)
             and team[action - 16] in battle.available_switches
         ):
-            return self.create_order(team[action - 16])
+            return self.agent.create_order(team[action - 16])
         else:
-            return self.choose_random_move(battle)
+            return self.agent.choose_random_move(battle)

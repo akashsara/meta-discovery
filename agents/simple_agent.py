@@ -7,7 +7,7 @@ import sys
 
 sys.path.append("./")
 from agents.env_player import Gen8EnvSinglePlayerFixed
-from poke_env.player.env_player import Gen8EnvSinglePlayer
+from gym.spaces import Space, Box
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
@@ -51,9 +51,18 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
             dim=-1,
         ).float()
 
-    def compute_reward(self, battle) -> float:
+    def calc_reward(self, last_battle, current_battle) -> float:
         return self.reward_computing_helper(
-            battle, fainted_value=2, hp_value=1, victory_value=30
+            current_battle, fainted_value=2, hp_value=1, victory_value=30
+        )
+
+    def describe_embedding(self) -> Space:
+        low = [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0]
+        high = [3, 3, 3, 3, 4, 4, 4, 4, 1, 1]
+        return Box(
+            np.array(low, dtype=np.float32),
+            np.array(high, dtype=np.float32),
+            dtype=np.float32,
         )
 
     def action_masks(self):
@@ -71,7 +80,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
         available_move_ids = [x.id for x in battle.available_moves]
         available_z_moves = [x.id for x in battle.active_pokemon.available_z_moves]
 
-        for action in range(len(self.action_space)):
+        for action in range(self.action_space.n):
             if (
                 action < 4
                 and action < len(moves)
@@ -130,9 +139,3 @@ class SimpleRLPlayerTesting(SimpleRLPlayer):
     def __init__(self, model, *args, **kwargs):
         SimpleRLPlayer.__init__(self, *args, **kwargs)
         self.model = model
-
-    def choose_move(self, battle):
-        state = self.embed_battle(battle).reshape(1, 1, -1)
-        predictions = self.model.predict(state)[0]
-        action = np.argmax(predictions)
-        return self._action_to_move(action, battle)

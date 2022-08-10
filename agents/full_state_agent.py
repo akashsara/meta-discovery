@@ -17,7 +17,7 @@ import torch
 
 sys.path.append("./")
 from agents.env_player import Gen8EnvSinglePlayerFixed
-from poke_env.player.env_player import Gen8EnvSinglePlayer
+from gym.spaces import Space, Box
 
 # We define our RL player
 # It needs a state embedder and a reward computer, hence these two methods
@@ -40,7 +40,6 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         However the API returns it as SPIKES: <COUNT>. We convert these counts
         to separate values.
         """
-        super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
         if config["create"]:
             # Pokedex
             df = pd.read_json(config["pokemon_json"]).T
@@ -103,6 +102,9 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         else:
             self.lookup = joblib.load(config["lookup_filename"])
         self.state_length_dict = {}
+        # We create the lookup first since it's needed for
+        # describe_embedding() which is called in super()
+        super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
 
     def create_empty_state_vector(self):
         pokemon = {
@@ -485,9 +487,71 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         # Return State
         return state
 
-    def compute_reward(self, battle) -> float:
+    def calc_reward(self, last_battle, current_battle) -> float:
         return self.reward_computing_helper(
-            battle, fainted_value=2, hp_value=1, victory_value=30
+            current_battle, fainted_value=2, hp_value=1, victory_value=30
+        )
+
+    def describe_embedding(self) -> Space:
+        # species, item, ability, possible_ability1-3, move1-4, type1-18
+        # effects1-164, status1-7, base_stats1-6, stat_boosts1-7, moves_pp1-4
+        # level, health, protect_counter, status_counter, fainted, active
+        # first_turn, must_recharge, preparing
+        pokemon_state_mins = (
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            + [0] * self.lookup["max_values"]["types"]
+            + [0] * self.lookup["max_values"]["effects"]
+            + [0] * self.lookup["max_values"]["status"]
+            + [0] * self.lookup["max_values"]["stats"]
+            + [-1] * self.lookup["max_values"]["boosts"]
+            + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        )
+        pokemon_state_maxes = (
+            [self.lookup["max_values"]["species"]]
+            + [self.lookup["max_values"]["items"]]
+            + [self.lookup["max_values"]["abilities"]] * 4
+            + [self.lookup["max_values"]["moves"]] * 4
+            + [1] * self.lookup["max_values"]["types"]
+            + [1] * self.lookup["max_values"]["effects"]
+            + [1] * self.lookup["max_values"]["status"]
+            + [1] * self.lookup["max_values"]["stats"]
+            + [1] * self.lookup["max_values"]["boosts"]
+            + [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        )
+        # side_conditions1-23, can_dynamax, dynamax_turns_left, can_mega_evolve
+        # can_z_move
+        team_state_mins = (
+            pokemon_state_mins * 6
+            + [0] * self.lookup["max_values"]["side_conditions"]
+            + [0, 0, 0, 0]
+        )
+        team_state_maxes = (
+            pokemon_state_maxes * 6
+            + [1] * self.lookup["max_values"]["side_conditions"]
+            + [1, 1, 1, 1]
+        )
+        # weather1-8, fields1-13
+        battle_state_mins = (
+            team_state_mins
+            + team_state_mins
+            + [0] * self.lookup["max_values"]["weather"]
+            + [0] * self.lookup["max_values"]["fields"]
+        )
+        battle_state_maxes = (
+            team_state_maxes
+            + team_state_maxes
+            + [1] * self.lookup["max_values"]["weather"]
+            + [1] * self.lookup["max_values"]["fields"]
+        )
+        # player_active_pokemon_index, opponent_active_pokemon_index
+        active_index_mins = [0, 0]
+        active_index_maxes = [5, 5]
+        full_state_mins = battle_state_mins + active_index_mins
+        full_state_maxes = battle_state_maxes + active_index_maxes
+        return Box(
+            np.array(full_state_mins, dtype=np.float32),
+            np.array(full_state_maxes, dtype=np.float32),
+            dtype=np.float32,
         )
 
     def skip_current_step(self):
@@ -502,7 +566,7 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         available_move_ids = [x.id for x in battle.available_moves]
         available_z_moves = [x.id for x in battle.active_pokemon.available_z_moves]
 
-        for action in range(len(self.action_space)):
+        for action in range(self.action_space.n):
             if (
                 action < 4
                 and action < len(moves)
@@ -565,10 +629,11 @@ class FullStatePlayerTesting(FullStatePlayer):
     def __init__(self, model, *args, **kwargs):
         FullStatePlayer.__init__(self, *args, **kwargs)
         self.model = model
-        print(model.summary())
 
     def choose_move(self, battle):
         state = self.embed_battle(battle)
-        predictions = self.model.predict(state)
-        action = np.argmax(predictions)
+        with torch.no_grad():
+            predictions = self.model(state)
+        action_mask = self.action_masks()
+        action = np.argmax(predictions + action_mask)
         return self._action_to_move(action, battle)

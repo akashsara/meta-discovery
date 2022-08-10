@@ -12,10 +12,17 @@ def generate_server_configuration(port):
     )
     return LocalhostServerConfiguration
 
+def poke_env_model_evaluation(player, model, num_episodes):
+    average_reward, episodic_average_reward = model.test(
+        player, num_episodes=num_episodes
+    )
+    print(
+        f"Evaluation: {player.n_won_battles} victories out of {num_episodes} episodes. Average Reward: {average_reward:.4f}. Average Episode Reward: {episodic_average_reward:.4f}"
+    )
+    return player.n_won_battles, average_reward, episodic_average_reward
 
 def poke_env_validate_model(
     env_player,
-    evaluation_func,
     model,
     num_episodes,
     random_player,
@@ -25,37 +32,17 @@ def poke_env_validate_model(
     results,
 ):
     print("Results against random player:")
-    env_player.play_against(
-        env_algorithm=evaluation_func,
-        opponent=random_player,
-        env_algorithm_kwargs={
-            "model": model,
-            "num_episodes": num_episodes,
-        },
-    )
-    random_wins = env_player.n_won_battles
+    env_player.reset_env(restart=True, opponent=random_player)
+    random_wins, random_average_reward, random_episodic_average_reward = poke_env_model_evaluation(env_player, model, num_episodes)
 
     print("\nResults against max player:")
-    env_player.play_against(
-        env_algorithm=evaluation_func,
-        opponent=max_player,
-        env_algorithm_kwargs={
-            "model": model,
-            "num_episodes": num_episodes,
-        },
-    )
-    max_wins = env_player.n_won_battles
+    env_player.reset_env(restart=True, opponent=max_player)
+    max_wins, max_average_reward, max_episodic_average_reward = poke_env_model_evaluation(env_player, model, num_episodes)
 
     print("\nResults against smart max player:")
-    env_player.play_against(
-        env_algorithm=evaluation_func,
-        opponent=smax_player,
-        env_algorithm_kwargs={
-            "model": model,
-            "num_episodes": num_episodes,
-        },
-    )
-    smax_wins = env_player.n_won_battles
+    env_player.reset_env(restart=True, opponent=smax_player)
+    smax_wins, smax_average_reward, smax_episodic_average_reward = poke_env_model_evaluation(env_player, model, num_episodes)
+
     results[key] = {
         "num_episodes": num_episodes,
         "vs_random": random_wins,
