@@ -1,43 +1,21 @@
 # -*- coding: utf-8 -*-
-# https://github.com/hsahovic/poke-env/blob/master/examples/rl_with_open_ai_gym_wrapper.py
-"""
-used for training a simple RL agent.
-So small state vs random/max_damage/smart max_damage
-"""
+# https://github.com/hsahovic/poke-env/blob/master/examples/rl_with_new_open_ai_gym_wrapper.py
+
 import json
 import os
+import time
 
 import numpy as np
 import torch
-import torch.nn as nn
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
 import utils
-from agents.simple_agent import SimpleRLPlayer
 from agents.max_damage_agent import MaxDamagePlayer
+from agents.simple_agent import SimpleRLPlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from models import simple_models
 from rl.agents.ppo import PPOAgent
-import time
-
-
-def model_training(player, model, **kwargs):
-    model.fit(player, **kwargs)
-    player.complete_current_battle()
-
-
-def model_evaluation(player, model, num_episodes):
-    # Reset battle statistics
-    player.reset_battles()
-    average_reward, episodic_average_reward = model.test(
-        player, num_episodes=num_episodes
-    )
-
-    print(
-        f"Evaluation: {player.n_won_battles} victories out of {num_episodes} episodes. Average Reward: {average_reward:.4f}. Average Episode Reward: {episodic_average_reward:.4f}"
-    )
-
 
 if __name__ == "__main__":
     # Config - Versioning
@@ -46,7 +24,7 @@ if __name__ == "__main__":
     server_port = 8000
     hash_name = str(hash(experiment_name))[2:12]
     expt_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-    print(f"Experiment: {experiment_name}\t Time:{expt_time}")
+    print(f"Experiment: {experiment_name}\t Time: {expt_time}")
     start_time = time.time()
 
     # Config - Model Save Directory
@@ -104,34 +82,23 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Setup player
-    env_player = SimpleRLPlayer(
-        battle_format="gen8randombattle",
-        log_level=30,
-        player_configuration=training_agent,
-        server_configuration=server_config,
-    )
-    # Setup independent player for testing
-    test_player = SimpleRLPlayer(
-        battle_format="gen8randombattle",
-        log_level=30,
-        player_configuration=test_agent,
-        server_configuration=server_config,
-    )
-
     # Setup opponents
     random_agent = RandomPlayer(
-        battle_format="gen8randombattle", player_configuration=rand_player, 
+        battle_format="gen8randombattle",
+        player_configuration=rand_player,
         server_configuration=server_config,
     )
     max_damage_agent = MaxDamagePlayer(
-        battle_format="gen8randombattle", player_configuration=max_player, 
+        battle_format="gen8randombattle",
+        player_configuration=max_player,
         server_configuration=server_config,
     )
     smart_max_damage_agent = SmartMaxDamagePlayer(
-        battle_format="gen8randombattle", player_configuration=smax_player, 
+        battle_format="gen8randombattle",
+        player_configuration=smax_player,
         server_configuration=server_config,
     )
+
     if training_opponent == "random":
         training_opponent = random_agent
     elif training_opponent == "max":
@@ -141,9 +108,28 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown training opponent.")
 
+    # Setup player
+    env_player = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=training_agent,
+        server_configuration=server_config,
+        opponent=training_opponent,
+        start_challenging=False,
+    )
+    # Setup independent player for testing
+    test_player = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=test_agent,
+        server_configuration=server_config,
+        opponent="placeholder",
+        start_challenging=False,
+    )
+
     # Grab some values from the environment to setup our model
     state_size = 10  # Hard-coded for the simple model
-    n_actions = len(env_player.action_space)
+    n_actions = env_player.action_space.n
     MODEL_KWARGS["n_actions"] = n_actions
 
     # Defining our DQN
@@ -159,29 +145,24 @@ if __name__ == "__main__":
     )
 
     evaluation_results = {}
-    evaluation_results = utils.poke_env_validate_model(
-        test_player,
-        model_evaluation,
-        ppo,
-        NB_VALIDATION_EPISODES,
-        random_agent,
-        max_damage_agent,
-        smart_max_damage_agent,
-        f"initial",
-        evaluation_results,
-    )
+    if NB_VALIDATION_EPISODES > 0:
+        evaluation_results = utils.poke_env_validate_model(
+            test_player,
+            ppo,
+            NB_VALIDATION_EPISODES,
+            random_agent,
+            max_damage_agent,
+            smart_max_damage_agent,
+            f"initial",
+            evaluation_results,
+        )
     num_epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
     for i in range(num_epochs):
         # Train Model
-        env_player.play_against(
-            env_algorithm=model_training,
-            opponent=training_opponent,
-            env_algorithm_kwargs={
-                "model": ppo,
-                "total_steps": VALIDATE_EVERY,
-                "do_training": True,
-            },
-        )
+        env_player.start_challenging()
+        ppo.fit(env_player, VALIDATE_EVERY, do_training=True)
+        # Shutdown training agent
+        env_player.close(purge=False)
 
         # Evaluate Model
         if NB_VALIDATION_EPISODES > 0 and i + 1 != num_epochs:
@@ -190,7 +171,6 @@ if __name__ == "__main__":
             # Validation
             evaluation_results = utils.poke_env_validate_model(
                 test_player,
-                model_evaluation,
                 ppo,
                 NB_VALIDATION_EPISODES,
                 random_agent,
@@ -207,7 +187,6 @@ if __name__ == "__main__":
     if NB_EVALUATION_EPISODES > 0:
         evaluation_results = utils.poke_env_validate_model(
             test_player,
-            model_evaluation,
             ppo,
             NB_EVALUATION_EPISODES,
             random_agent,

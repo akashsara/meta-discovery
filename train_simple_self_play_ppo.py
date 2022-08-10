@@ -4,63 +4,38 @@
 import asyncio
 import json
 import os
+import time
 from threading import Thread
 
 import numpy as np
 import torch
-import torch.nn as nn
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
-from poke_env.utils import to_id_str
 
 import utils
-from agents.simple_agent import SimpleRLPlayer
 from agents.max_damage_agent import MaxDamagePlayer
+from agents.simple_agent import SimpleRLPlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from models import simple_models
 from rl.agents.ppo import PPOAgent
-import time
 
 
-def model_training(player, model, **kwargs):
-    model.fit(player, **kwargs)
-    player.complete_current_battle()
-
-
-def model_evaluation(player, model, num_episodes):
-    # Reset battle statistics
-    player.reset_battles()
-    average_reward, episodic_average_reward = model.test(
-        player, num_episodes=num_episodes
-    )
-
-    print(
-        f"Evaluation: {player.n_won_battles} victories out of {num_episodes} episodes. Average Reward: {average_reward:.4f}. Average Episode Reward: {episodic_average_reward:.4f}"
+async def battle_handler(player1, player2, num_challenges):
+    await asyncio.gather(
+        player1.agent.accept_challenges(player2.username, num_challenges),
+        player2.agent.send_challenges(player1.username, num_challenges),
     )
 
 
-async def launch_battles(player, opponent):
-    battles_coroutine = asyncio.gather(
-        player.send_challenges(
-            opponent=to_id_str(opponent.username),
-            n_challenges=1,
-            to_wait=opponent.logged_in,
-        ),
-        opponent.accept_challenges(opponent=to_id_str(player.username), n_challenges=1),
-    )
-    await battles_coroutine
-
-
-def env_algorithm_wrapper(env_algorithm, player, kwargs):
-    env_algorithm(player, **kwargs)
-
-    player._start_new_battle = False
-    while True:
-        try:
-            player.complete_current_battle()
-            player.reset()
-        except OSError:
-            break
+def training_function(player, model, model_kwargs):
+    # Fit (train) model as necessary.
+    model.fit(player, **model_kwargs)
+    player.done_training = True
+    # Play out the remaining battles so both fit() functions complete
+    # We use 99 to give the agent an invalid option so it's forced
+    # to take a random legal action
+    while player.current_battle and not player.current_battle.finished:
+        _ = player.step(99)
 
 
 if __name__ == "__main__":
@@ -69,7 +44,7 @@ if __name__ == "__main__":
     server_port = 8000
     hash_name = str(hash(experiment_name))[2:12]
     expt_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-    print(f"Experiment: {experiment_name}\t Time:{expt_time}")
+    print(f"Experiment: {experiment_name}\t Time: {expt_time}")
     start_time = time.time()
 
     # Config - Model Save Directory
@@ -128,27 +103,6 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Setup player
-    player1 = SimpleRLPlayer(
-        battle_format="gen8randombattle",
-        log_level=30,
-        player_configuration=training_agent1,
-        server_configuration=server_config,
-    )
-    player2 = SimpleRLPlayer(
-        battle_format="gen8randombattle",
-        log_level=30,
-        player_configuration=training_agent2,
-        server_configuration=server_config,
-    )
-    # Setup independent player for testing
-    test_player = SimpleRLPlayer(
-        battle_format="gen8randombattle",
-        log_level=30,
-        player_configuration=test_agent,
-        server_configuration=server_config,
-    )
-
     # Setup opponents
     random_agent = RandomPlayer(
         battle_format="gen8randombattle",
@@ -166,9 +120,36 @@ if __name__ == "__main__":
         server_configuration=server_config,
     )
 
+    # Setup player
+    player1 = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=training_agent1,
+        server_configuration=server_config,
+        opponent="placeholder",
+        start_challenging=False,
+    )
+    player2 = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=training_agent2,
+        server_configuration=server_config,
+        opponent="placeholder",
+        start_challenging=False,
+    )
+    # Setup independent player for testing
+    test_player = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=test_agent,
+        server_configuration=server_config,
+        opponent="placeholder",
+        start_challenging=False,
+    )
+
     # Grab some values from the environment to setup our model
     state_size = 10  # Hard-coded for the simple model
-    n_actions = len(player1.action_space)
+    n_actions = player1.action_space.n
     MODEL_KWARGS["n_actions"] = n_actions
 
     # Defining our DQN
@@ -184,53 +165,50 @@ if __name__ == "__main__":
     )
 
     evaluation_results = {}
-    evaluation_results = utils.poke_env_validate_model(
-        test_player,
-        model_evaluation,
-        ppo,
-        NB_VALIDATION_EPISODES,
-        random_agent,
-        max_damage_agent,
-        smart_max_damage_agent,
-        f"initial",
-        evaluation_results,
-    )
+    if NB_VALIDATION_EPISODES > 0:
+        evaluation_results = utils.poke_env_validate_model(
+            test_player,
+            ppo,
+            NB_VALIDATION_EPISODES,
+            random_agent,
+            max_damage_agent,
+            smart_max_damage_agent,
+            f"initial",
+            evaluation_results,
+        )
 
     num_epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
     for i in range(num_epochs):
         # Setup arguments to pass to the training function
         p1_env_kwargs = {
-            "model": ppo,
             "total_steps": VALIDATE_EVERY,
             "do_training": True,
         }
         p2_env_kwargs = {
-            "model": ppo,
             "total_steps": VALIDATE_EVERY,
             "do_training": False,
         }
 
-        # Train Model
-        # Make Two Threads And Play vs Each Other
-        player1._start_new_battle = True
-        player2._start_new_battle = True
-
+        # Self-Play bits
+        player1.done_training = False
+        player2.done_training = False
+        # 1. Get event loop
         loop = asyncio.get_event_loop()
-
-        t1 = Thread(
-            target=lambda: env_algorithm_wrapper(model_training, player1, p1_env_kwargs)
-        )
+        # Make Two Threads; one per player and run model.fit()
+        t1 = Thread(target=lambda: training_function(player1, ppo, p1_env_kwargs))
         t1.start()
 
-        t2 = Thread(
-            target=lambda: env_algorithm_wrapper(model_training, player2, p2_env_kwargs)
-        )
+        t2 = Thread(target=lambda: training_function(player2, ppo, p2_env_kwargs))
         t2.start()
-
-        while player1._start_new_battle:
-            loop.run_until_complete(launch_battles(player1, player2))
+        # On the network side, keep sending & accepting battles
+        while not player1.done_training or not player2.done_training:
+            loop.run_until_complete(battle_handler(player1, player2, 1))
+        # Wait for thread completion
         t1.join()
         t2.join()
+
+        player1.close(purge=False)
+        player2.close(purge=False)
 
         # Evaluate Model
         if NB_VALIDATION_EPISODES > 0 and i + 1 != num_epochs:
@@ -239,7 +217,6 @@ if __name__ == "__main__":
             # Validation
             evaluation_results = utils.poke_env_validate_model(
                 test_player,
-                model_evaluation,
                 ppo,
                 NB_VALIDATION_EPISODES,
                 random_agent,
@@ -255,7 +232,6 @@ if __name__ == "__main__":
     if NB_EVALUATION_EPISODES > 0:
         evaluation_results = utils.poke_env_validate_model(
             test_player,
-            model_evaluation,
             ppo,
             NB_EVALUATION_EPISODES,
             random_agent,
