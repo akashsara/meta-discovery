@@ -26,7 +26,7 @@ AGENT = "Simple State SelfPlay DQN Agent"
 #   LADDER = Play 100 Matches on Ladder
 #   CHALLENGE = Accept a single challenge from any user on Showdown
 MODE = "CHALLENGE"
-NUM_GAMES = 1
+NUM_GAMES = 100
 OPPONENT = "DarkeKnight"  # Only used in CHALLENGE mode
 USERNAME = id_dict[AGENT]["username"]
 PASSWORD = id_dict[AGENT]["password"]
@@ -47,29 +47,7 @@ def get_action(player, state, actor_critic=False):
 
 async def main():
     print("Loading model...")
-    # RandomPlayer
-    if AGENT == "Random Agent":
-        player = RandomPlayer(
-            player_configuration=PlayerConfiguration(USERNAME, PASSWORD),
-            server_configuration=ShowdownServerConfiguration,
-            start_timer_on_battle_start=True,
-        )
-    # MaxDamagePlayer
-    elif AGENT == "Max Damage Agent":
-        player = MaxDamagePlayer(
-            player_configuration=PlayerConfiguration(USERNAME, PASSWORD),
-            server_configuration=ShowdownServerConfiguration,
-            start_timer_on_battle_start=True,
-        )
-    # SmartMaxDamagePlayer
-    elif AGENT == "Smart Max Damage Agent":
-        player = SmartMaxDamagePlayer(
-            player_configuration=PlayerConfiguration(USERNAME, PASSWORD),
-            server_configuration=ShowdownServerConfiguration,
-            start_timer_on_battle_start=True,
-        )
-    # Simple State DQN Agent
-    elif AGENT in [
+    if AGENT in [
         "Simple State DQN Agent",
         "Simple State SelfPlay DQN Agent",
     ]:
@@ -194,11 +172,9 @@ async def main():
         # Setup for Laddering
         player.start_laddering(NUM_GAMES)
         # Do the actual battles
-        episode_rewards = []
         for _ in range(NUM_GAMES):
             done = False
             state = player.reset()
-            episode_reward = 0
             while not done:
                 action_mask = player.action_masks()
                 # Get action
@@ -207,10 +183,6 @@ async def main():
                 action = np.argmax(predictions + action_mask)
                 # Play move
                 state, reward, done, _ = player.step(action)
-                episode_reward += reward
-            episode_rewards.append(episode_reward)
-        # Print average episodic reward from this run
-        print(f"Average Episode Reward: {np.mean(episode_rewards)}")
     # Accepting challenges from any user
     elif MODE == "CHALLENGE":
         print(f"{USERNAME} CHALLENGING")
