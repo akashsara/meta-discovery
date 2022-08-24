@@ -5,13 +5,9 @@ import asyncio
 from poke_env.player.random_player import RandomPlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
-from agents import simple_agent, full_state_agent
-from models import simple_models, full_state_models
 
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.server_configuration import ShowdownServerConfiguration
-import joblib
-import numpy as np
 from pokemon_showdown_accounts import id_dict
 import torch
 
@@ -28,16 +24,6 @@ PASSWORD = id_dict[AGENT]["password"]
 
 gpu = torch.cuda.is_available()
 device = torch.device("cuda" if gpu else "cpu")
-
-
-def get_action(player, state, actor_critic=False):
-    if actor_critic:
-        with torch.no_grad():
-            predictions, _ = player.model(state.to(device))
-    else:
-        with torch.no_grad():
-            predictions = player.model(state.to(device))
-    return predictions.cpu()
 
 
 async def main():
@@ -72,6 +58,7 @@ async def main():
     elif MODE == "CHALLENGE":
         print(f"/challenge {USERNAME}")
         await player.accept_challenges(None, NUM_GAMES)
+
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(main())
