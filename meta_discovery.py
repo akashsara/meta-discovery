@@ -33,7 +33,7 @@ class MetaDiscoveryDatabase:
             "eiscuenoice": "eiscue",
             "keldeoresolute": "keldeo",
             "mimikyubusted": "mimikyu",
-            "zygardecomplete": "zygarde", # Could be zygarde10 too
+            "zygardecomplete": "zygarde",  # Could be zygarde10 too
         }
         self.num_battles = 0
         self.wins = np.zeros(len(moveset_database), dtype=int)
@@ -91,6 +91,7 @@ class MetaDiscoveryDatabase:
         self.winrates = np.where(self.picks != 0, self.wins / self.picks, 0.0)
         self.pickrates = self.picks / (2 * self.num_battles)
 
+
 class Pokedex:
     """
     Create a Pokedex to ensure species clause.
@@ -98,6 +99,7 @@ class Pokedex:
     Given a Pokemon we can find its pokedex number.
     We can then use this number to find all Pokemon that share the number.
     """
+
     def __init__(self, pokedex_json):
         pokedex = pd.read_json(pokedex_json).T
         pokedex["num"] = pokedex["num"].astype(int)
@@ -118,11 +120,12 @@ class TeamBuilder(Teambuilder):
     """
     Note that IDs in Pokedex are not the same IDs as in MetaDiscoveryDatabase.
     This is because multiple distinct Pokemon (from a battle POV) can share
-    the same Pokedex number. 
+    the same Pokedex number.
     Pokedex is for enforcing the species clause and uses the Pokedex number.
     MetaDiscoveryDatabase just uses a unique ID for each distinct Pokemon.
     For example Landorus vs Landorus-T.
     """
+
     def __init__(self, exploration_factor, moveset_database, all_keys, pokedex_json):
         self.epsilon = exploration_factor
         self.movesets = moveset_database
@@ -158,7 +161,11 @@ class TeamBuilder(Teambuilder):
             # Select a random moveset for the selected Pokemon
             team.append(np.random.choice(self.movesets[pokemon]["movesets"]))
             # Identify all Pokemon of the same species
-            same_species = [database.pokemon2key[pokemon] for pokemon in self.pokedex.get_same_species(pokemon) if pokemon in database.pokemon2key]
+            same_species = [
+                database.pokemon2key[pokemon]
+                for pokemon in self.pokedex.get_same_species(pokemon)
+                if pokemon in database.pokemon2key
+            ]
             # Zero out probability of that Pokemon/other forms (species clause)
             probabilities[same_species] = 0
         # Convert team to Showdown-usable format
@@ -184,61 +191,8 @@ class TeamBuilder(Teambuilder):
         return random.choice(self.teams)
 
 
-def get_action(player, state, actor_critic=False):
-    if actor_critic:
-        with torch.no_grad():
-            predictions, _ = player.model(state.to(device))
-    else:
-        with torch.no_grad():
-            predictions = player.model(state.to(device))
-    return predictions.cpu()
-
-
-async def battle_handler(player1, player2, num_challenges):
-    await asyncio.gather(
-        player1.agent.accept_challenges(player2.username, num_challenges),
-        player2.agent.send_challenges(player1.username, num_challenges),
-    )
-
-
-def play_battle(player, num_battles):
-    is_actor_critic = "ActorCritic" in str(player.model)
-    for _ in range(num_battles):
-        done = False
-        state = player.reset()
-        while not done:
-            action_mask = player.action_masks()
-            # Get action
-            predictions = get_action(player, state, is_actor_critic)
-            # Use policy
-            action = np.argmax(predictions + action_mask)
-            # Play move
-            state, reward, done, _ = player.step(action)
-        # Update battle statistics
-        team = [pokemon.species for _, pokemon in player.current_battle.team.items()]
-        if player.current_battle.won:
-            player.all_wins.extend(team)
-        else:
-            player.all_losses.extend(team)
-
-
-
-def play_battles(player1, player2, n_battles):
-    # Setup the battle loop
-    loop = asyncio.get_event_loop()
-    # Make Two Threads; one per player
-    t1 = Thread(target=lambda: play_battle(player1, n_battles))
-    t1.start()
-    t2 = Thread(target=lambda: play_battle(player2, n_battles))
-    t2.start()
-    # On the network side, send & accept N battles
-    loop.run_until_complete(battle_handler(player1, player2, n_battles))
-    # Wait for thread completion
-    t1.join()
-    t2.join()
-
-    player1.close(purge=False)
-    player2.close(purge=False)
+async def play_battles(player1, player2, n_battles):
+    await player1.battle_against(player2, n_battles=n_battles)
 
 
 def setup_and_load_model(model, model_kwargs, model_path):
@@ -289,21 +243,20 @@ if __name__ == "__main__":
     player1_kwargs = {}
     player2_kwargs = {}
 
-    player1 = simple_agent.SimpleRLPlayerTesting(
+    player1 = simple_agent.GeneralAPISimpleAgent(
         battle_format="gen8anythinggoes",
         model=player1_model,
+        device=device,
         start_timer_on_battle_start=True,
-        opponent="placeholder",
-        start_challenging=False,
         **player1_kwargs,
     )
-    player2 = simple_agent.SimpleRLPlayerTesting(
+
+    player2 = simple_agent.GeneralAPISimpleAgent(
         battle_format="gen8anythinggoes",
         model=player2_model,
+        device=device,
         start_timer_on_battle_start=True,
-        opponent="placeholder",
-        start_challenging=False,
-        **player1_kwargs,
+        **player2_kwargs,
     )
 
     # Use random seeds
@@ -319,34 +272,64 @@ if __name__ == "__main__":
         meta_discovery_database.load(meta_discovery_db_path)
 
     all_pokemon = list(meta_discovery_database.key2pokemon.values())
-    team_builder = TeamBuilder(exploration_factor, moveset_database, all_pokemon, pokedex_json_path)
+    team_builder = TeamBuilder(
+        exploration_factor, moveset_database, all_pokemon, pokedex_json_path
+    )
 
     start_time = time.time()
+    loop = asyncio.get_event_loop()
     for i in range(num_battles_to_simulate // team_generation_interval):
         print(f"Epoch {i+1}")
-        # Reset tracked statistics for this new run
-        # This is stuff we've defined so it's not a part of the API
-        player1.reset_statistics()
-        player2.reset_statistics()
 
         # Generate new teams
         print("Generating New Teams")
         team_builder.generate_teams(meta_discovery_database, num_teams_to_generate)
 
         # Make agents use the generated teams
-        player1.agent._team = team_builder
-        player2.agent._team = team_builder
+        player1._team = team_builder
+        player2._team = team_builder
 
         # Play battles
         print("Battling")
-        play_battles(
-            player1=player1,
-            player2=player2,
-            n_battles=team_generation_interval,
+        loop.run_until_complete(
+            play_battles(
+                player1=player1,
+                player2=player2,
+                n_battles=team_generation_interval,
+            )
         )
 
-        # Update statistics
-        meta_discovery_database.update_battle_statistics(player1.all_wins + player2.all_wins, player1.all_losses + player2.all_losses, team_generation_interval)
+        # Extract stats from the battles played
+        # We get battle IDs from p1 since both players are in every battle.
+        # This needs to be changed if we have multiple players
+        player1_all_wins = []
+        player1_all_losses = []
+        player2_all_wins = []
+        player2_all_losses = []
+        for battle in player1.battles:
+            p1_team = [
+                pokemon.species for _, pokemon in player1.battles[battle].team.items()
+            ]
+            p2_team = [
+                pokemon.species for _, pokemon in player2.battles[battle].team.items()
+            ]
+            if player1.battles[battle].won:
+                player1_all_wins.extend(p1_team)
+                player2_all_losses.extend(p2_team)
+            else:
+                player2_all_wins.extend(p2_team)
+                player1_all_losses.extend(p1_team)
+
+        # Reset trackers so we don't count battles twice
+        player1.reset_battles()
+        player2.reset_battles()
+
+        # Update overall statistics
+        meta_discovery_database.update_battle_statistics(
+            player1_all_wins + player2_all_wins,
+            player1_all_losses + player2_all_losses,
+            team_generation_interval,
+        )
     end_time = time.time()
     print(f"Simulation Time Taken: {end_time - start_time:.4f}")
 
