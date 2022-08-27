@@ -43,8 +43,9 @@ for meta in valid_metas:
                     if moveset["level"] in [5, 100]:
                         moveset["level"] = 100
                 # EDGE CASE HANDLER
-                pokemon_id, pokemon_name = utils.edge_case_handler(pokemon, moveset_name)
+                pokemon_id, pokemon_name = utils.pokemon_name_edge_case_handler(pokemon, moveset_name)
                 # Get the moveset in the Showdown format
+                moveset = utils.edge_case_handler(pokemon_id, moveset)
                 moveset = utils.moveset2showdownformat(pokemon_name, moveset)
                 # Append to our DB
                 if pokemon_id in moveset_database:

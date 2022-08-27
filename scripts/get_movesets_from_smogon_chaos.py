@@ -53,7 +53,7 @@ for month in months:
         total_battles += int(result["info"]["number of battles"])
         result = result["data"]
         for pokemon, pokemon_info in result.items():
-            pokemon_id, pokemon_name = utils.edge_case_handler(pokemon, "Max Usage")
+            pokemon_id, pokemon_name = utils.pokemon_name_edge_case_handler(pokemon, "Max Usage")
             # Ignore Pokemon for which we already have data
             if pokemon_id in moveset_database:
                 continue
@@ -82,6 +82,9 @@ for month in months:
                 data[pokemon_id]["spreads"][spread] = data[pokemon_id]["spreads"].get(spread, 0) + int(n_uses)
         print(f"{month}: {meta}")
 
+# Save extracted raw data
+joblib.dump(data, "chaos_data.joblib")
+
 # Log No. new Pokemon to be added to the DB
 print(f"No. of Pokemon not in Moveset Database: {len(data)}")
 
@@ -91,19 +94,23 @@ for pokemon_id in data:
     x = data[pokemon_id]
     # Sort moves by frequency & take the top 4
     moves = list(dict(sorted(x["moves"].items(), key=lambda item: item[1], reverse=True)).keys())
+    # Remove invalid entries
     moves = [move for move in moves if move not in ["", ":"]]
     moves = moves[:4]
     # Sort abilities by frequency & take the top 1
     abilities = list(dict(sorted(x["abilities"].items(), key=lambda item: item[1], reverse=True)).keys())
+    # Remove invalid entries
     abilities = [ability for ability in abilities if ability not in ["", ":"]]
     ability = abilities[0]
     # Sort items by frequency & take the top 1
     items = list(dict(sorted(x["items"].items(), key=lambda item: item[1], reverse=True)).keys())
-    items = [item for item in items if item not in ["", ":"]]
+    # Remove invalid entries
+    items = [item for item in items if item not in ["", ":", "nothing"]]
     item = items[0]
     # Sort Nature + EV Spreads by frequence & take the top 1
     spreads = list(dict(sorted(x["spreads"].items(), key=lambda item: item[1], reverse=True)).keys())
-    spreads = [spread for spread in spreads if spread not in ["", ":"]]
+    # Remove invalid entries - EV total less than 500
+    spreads = [spread for spread in spreads if sum([int(x) for x in spread.split(":")[1].split("/")]) > 500]
     spread = spreads[0]
     # Convert spread to Nature + EVs
     nature, evs = utils.spread2nature_and_evs(spread)
@@ -118,6 +125,7 @@ for pokemon_id in data:
         "nature": nature,
     }
     # Convert to Showdown Format
+    moveset = utils.edge_case_handler(pokemon_id, moveset)
     moveset = utils.moveset2showdownformat(pokemon_name, moveset)
     # Insert into our DB
     moveset_database[pokemon_id] = {

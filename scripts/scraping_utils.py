@@ -56,17 +56,21 @@ def spread2nature_and_evs(spread):
     return nature, evs
 
 
-def edge_case_handler(pokemon, moveset_name):
+def pokemon_name_edge_case_handler(pokemon, moveset_name):
     """
-    EDGE CASE HANDLER
-    Zygarde-Complete starts as either 50% or 10%
-    If it specifies the name in the moveset name use that
-    Otherwise we set it as Zygarde
+    This is distinct from the normal edge case handler because it
+    has to do with the Pokemon species, not any attributes.
+    So this runs before we initialize our DB.
     """
     # We use the poke_env format to name Pokemon
     # For consistency in everything
     pokemon_id = to_id_str(pokemon)
     if pokemon_id == "zygardecomplete":
+        """
+        Zygarde-Complete starts as either 50% or 10%
+        If it specifies the name in the moveset name use that
+        Otherwise we set it as Zygarde
+        """
         if "10%" in moveset_name:
             pokemon_id = "zygarde10"
             pokemon_name = "Zygarde-10%"
@@ -77,3 +81,10 @@ def edge_case_handler(pokemon, moveset_name):
         pokemon_name = pokemon
 
     return pokemon_id, pokemon_name
+
+def edge_case_handler(pokemon_id, moveset):
+    if pokemon_id in ["genesectdouse", "pichu"]: 
+        moveset["shiny"] = True
+    if pokemon_id == "poliwhirl":
+        moveset["moves"] = ["waterfall", "earthquake", "hypnosis", "poweruppunch"]
+    return moveset
