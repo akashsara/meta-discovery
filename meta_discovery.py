@@ -14,6 +14,7 @@ from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents import simple_agent, full_state_agent
 from models import simple_models, full_state_models
+from scripts.meta_discovery_utils import Epsilon, LinearDecayEpsilon
 
 gpu = torch.cuda.is_available()
 device = torch.device("cuda" if gpu else "cpu")
@@ -116,14 +117,20 @@ class TeamBuilder(Teambuilder):
     For example Landorus vs Landorus-T.
     """
 
-    def __init__(self, exploration_factor, moveset_database, all_keys, pokedex_json):
-        self.epsilon = exploration_factor
+    def __init__(
+        self,
+        epsilon: Epsilon,
+        moveset_database: dict,
+        all_keys: list,
+        pokedex_json_path: str,
+    ):
+        self.epsilon = epsilon
         self.movesets = moveset_database
         self.all_pokemon = all_keys
-        self.pokedex = Pokedex(pokedex_json)
+        self.pokedex = Pokedex(pokedex_json_path)
         self.teams = []
 
-    def weights2probabilities(self, weights):
+    def weights2probabilities(self, weights: np.ndarray) -> np.ndarray:
         """
         np.choice requires probabilities not weights
         """
@@ -133,9 +140,9 @@ class TeamBuilder(Teambuilder):
         else:
             return (weights + 1) / weights.shape[0]
 
-    def generate_team(self, database):
+    def generate_team(self, database: MetaDiscoveryDatabase) -> str:
         # 1 - Epsilon chance of picking a team based on winrate
-        if np.random.random() > self.epsilon:
+        if np.random.random() > self.epsilon.calculate_epsilon(database.num_battles):
             # Sample based on winrate
             probabilities = database.winrates
         # There is an epsilon chance of picking low-usage Pokemon
@@ -164,7 +171,7 @@ class TeamBuilder(Teambuilder):
         # Return selected team
         return team
 
-    def generate_teams(self, database, num_teams):
+    def generate_teams(self, database: MetaDiscoveryDatabase, num_teams: int):
         """
         Generates num_teams teams to be used for battles.
         Each call resets the previous pool of generated teams.
@@ -201,12 +208,15 @@ if __name__ == "__main__":
     pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
     # Total num. battles to simulate
     num_battles_to_simulate = 1000
-    # Prob. of using inverse pickrate over winrate
-    exploration_factor = 0.2
     # Num. battles between generating new teams
     team_generation_interval = 100
     # Num. teams generated
     num_teams_to_generate = 2500
+    # Exploration Factor - Epsilon
+    # Prob. of using inverse pickrate over winrate
+    epsilon_min = 0.2
+    epsilon_max = 1.0
+    epsilon_decay = num_battles_to_simulate / 5
     # Set random seed for reproducible results
     random_seed = 42
 
@@ -264,9 +274,11 @@ if __name__ == "__main__":
     if os.path.exists(meta_discovery_db_path):
         meta_discovery_database.load(meta_discovery_db_path)
 
+    exploration_control = LinearDecayEpsilon(epsilon_max, epsilon_min, epsilon_decay)
+
     all_pokemon = list(meta_discovery_database.key2pokemon.values())
     team_builder = TeamBuilder(
-        exploration_factor, moveset_database, all_pokemon, pokedex_json_path
+        exploration_control, moveset_database, all_pokemon, pokedex_json_path
     )
 
     start_time = time.time()
