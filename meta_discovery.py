@@ -48,7 +48,7 @@ class MetaDiscoveryDatabase:
 
     def load(self, db_path):
         database = joblib.load(db_path)
-        self.num_battles = 0
+        self.num_battles = database["num_battles"]
         self.wins = database["wins"]
         self.picks = database["picks"]
         self.winrates = database["winrates"]
@@ -72,16 +72,6 @@ class MetaDiscoveryDatabase:
 
     def update_battle_statistics(self, wins, losses, num_battles):
         self.num_battles += num_battles
-        for win in wins:
-            if win in self.form_mapper:
-                win = self.form_mapper[win]
-            if win not in self.pokemon2key:
-                print(win)
-        for loss in losses:
-            if loss in self.form_mapper:
-                loss = self.form_mapper[loss]
-            if loss not in self.pokemon2key:
-                print(loss)
         wins = [self.form_mapper.get(win, win) for win in wins]
         losses = [self.form_mapper.get(loss, loss) for loss in losses]
         win_ids = [self.pokemon2key[win] for win in wins]
@@ -131,6 +121,7 @@ class TeamBuilder(Teambuilder):
         self.movesets = moveset_database
         self.all_pokemon = all_keys
         self.pokedex = Pokedex(pokedex_json)
+        self.teams = []
 
     def weights2probabilities(self, weights):
         """
@@ -215,7 +206,7 @@ if __name__ == "__main__":
     # Num. battles between generating new teams
     team_generation_interval = 100
     # Num. teams generated
-    num_teams_to_generate = 1000
+    num_teams_to_generate = 2500
     # Set random seed for reproducible results
     random_seed = 42
 
@@ -245,6 +236,7 @@ if __name__ == "__main__":
 
     player1 = simple_agent.GeneralAPISimpleAgent(
         battle_format="gen8anythinggoes",
+        max_concurrent_battles=25,
         model=player1_model,
         device=device,
         start_timer_on_battle_start=True,
@@ -253,6 +245,7 @@ if __name__ == "__main__":
 
     player2 = simple_agent.GeneralAPISimpleAgent(
         battle_format="gen8anythinggoes",
+        max_concurrent_battles=25,
         model=player2_model,
         device=device,
         start_timer_on_battle_start=True,
@@ -332,6 +325,8 @@ if __name__ == "__main__":
         )
     end_time = time.time()
     print(f"Simulation Time Taken: {end_time - start_time:.4f}")
+
+    meta_discovery_database.save("meta_discovery_database.joblib")
 
     if meta_discovery_database.pickrates:
         print(meta_discovery_database)
