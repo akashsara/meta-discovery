@@ -30,6 +30,7 @@ class MetaDiscoveryDatabase:
     """
 
     def __init__(self, moveset_database):
+        # form_mapper converts alternate forms of Pokemon into the usual form 
         self.form_mapper = {
             "eiscuenoice": "eiscue",
             "keldeoresolute": "keldeo",
@@ -207,9 +208,9 @@ if __name__ == "__main__":
     # Used to enforce species clause
     pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
     # Total num. battles to simulate
-    num_battles_to_simulate = 1000
+    num_battles_to_simulate = 100000
     # Num. battles between generating new teams
-    team_generation_interval = 100
+    team_generation_interval = 1000
     # Num. teams generated
     num_teams_to_generate = 2500
     # Exploration Factor - Epsilon
@@ -288,7 +289,10 @@ if __name__ == "__main__":
 
         # Generate new teams
         print("Generating New Teams")
+        start = time.time()
         team_builder.generate_teams(meta_discovery_database, num_teams_to_generate)
+        end = time.time()
+        print(f"Time Taken: {end - start}s")
 
         # Make agents use the generated teams
         player1._team = team_builder
@@ -296,6 +300,7 @@ if __name__ == "__main__":
 
         # Play battles
         print("Battling")
+        start = time.time()
         loop.run_until_complete(
             play_battles(
                 player1=player1,
@@ -303,6 +308,9 @@ if __name__ == "__main__":
                 n_battles=team_generation_interval,
             )
         )
+        end = time.time()
+        print(f"Battles Completed: {team_generation_interval}")
+        print(f"Time Taken: {end - start}s")
 
         # Extract stats from the battles played
         # We get battle IDs from p1 since both players are in every battle.
@@ -340,9 +348,6 @@ if __name__ == "__main__":
 
     meta_discovery_database.save("meta_discovery_database.joblib")
 
-    if meta_discovery_database.pickrates:
-        print(meta_discovery_database)
-
     # Meta Discovery
-    print(meta_discovery_database)
+    print(meta_discovery_database["num_battles"])
     print("Fin.")
