@@ -9,12 +9,12 @@ import torch
 from threading import Thread
 from poke_env.teambuilder.teambuilder import Teambuilder
 from poke_env.player.random_player import RandomPlayer
-from poke_env.player.random_player import RandomPlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents import simple_agent, full_state_agent
 from models import simple_models, full_state_models
 from scripts.meta_discovery_utils import Epsilon, LinearDecayEpsilon
+from poke_env.player_configuration import PlayerConfiguration
 
 gpu = torch.cuda.is_available()
 device = torch.device("cuda" if gpu else "cpu")
@@ -32,6 +32,19 @@ class MetaDiscoveryDatabase:
     def __init__(self, moveset_database):
         # form_mapper converts alternate forms of Pokemon into the usual form 
         self.form_mapper = {
+            "basculinbluestriped": "basculin",
+            "gastrodoneast": "gastrodon",
+            "genesectdouse": "genesect",
+            "magearnaoriginal": "magearna",
+            "toxtricitylowkey": "toxtricity",
+            "pikachukalos": "pikachu",
+            "pikachuoriginal": "pikachu",
+            "pikachusinnoh": "pikachu",
+            "pikachuunova": "pikachu",
+            "pikachuworld": "pikachu",
+            "pikachualola": "pikachu",
+            "pikachuhoenn": "pikachu",
+            "pikachupartner": "pikachu",
             "eiscuenoice": "eiscue",
             "keldeoresolute": "keldeo",
             "mimikyubusted": "mimikyu",
@@ -244,22 +257,24 @@ if __name__ == "__main__":
     # Create our battle agents
     player1_kwargs = {}
     player2_kwargs = {}
-
+    
     player1 = simple_agent.GeneralAPISimpleAgent(
-        battle_format="gen8anythinggoes",
+        battle_format="gen8randombattle",
         max_concurrent_battles=25,
         model=player1_model,
         device=device,
         start_timer_on_battle_start=True,
+        player_configuration=PlayerConfiguration("Battle_Agent_1", None),
         **player1_kwargs,
     )
 
     player2 = simple_agent.GeneralAPISimpleAgent(
-        battle_format="gen8anythinggoes",
+        battle_format="gen8randombattle",
         max_concurrent_battles=25,
         model=player2_model,
         device=device,
         start_timer_on_battle_start=True,
+        player_configuration=PlayerConfiguration("Battle_Agent_2", None),
         **player2_kwargs,
     )
 
@@ -283,7 +298,6 @@ if __name__ == "__main__":
     )
 
     start_time = time.time()
-    loop = asyncio.get_event_loop()
     for i in range(num_battles_to_simulate // team_generation_interval):
         print(f"Epoch {i+1}")
 
@@ -301,7 +315,7 @@ if __name__ == "__main__":
         # Play battles
         print("Battling")
         start = time.time()
-        loop.run_until_complete(
+        asyncio.run(
             play_battles(
                 player1=player1,
                 player2=player2,
