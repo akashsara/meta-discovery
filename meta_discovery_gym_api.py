@@ -203,8 +203,53 @@ class TeamBuilder(Teambuilder):
         return random.choice(self.teams)
 
 
-async def play_battles(player1, player2, n_battles):
-    await player1.battle_against(player2, n_battles=n_battles)
+
+def get_action(player, state, actor_critic=False):
+    if actor_critic:
+        with torch.no_grad():
+            predictions, _ = player.model(state.to(device))
+    else:
+        with torch.no_grad():
+            predictions = player.model(state.to(device))
+    return predictions.cpu()
+
+
+async def battle_handler(player1, player2, num_challenges):
+    await asyncio.gather(
+        player1.agent.accept_challenges(player2.username, num_challenges),
+        player2.agent.send_challenges(player1.username, num_challenges),
+    )
+
+
+def play_battles(player, num_battles):
+    is_actor_critic = "ActorCritic" in str(player.model)
+    for _ in range(num_battles):
+        done = False
+        state = player.reset()
+        while not done:
+            action_mask = player.action_masks()
+            # Get action
+            predictions = get_action(player, state, is_actor_critic)
+            # Use policy
+            action = np.argmax(predictions + action_mask)
+            # Play move
+            state, reward, done, _ = player.step(action)
+
+
+def play_battles_wrapper(player1, player2, n_battles):
+    # Make Two Threads; one per player
+    t1 = Thread(target=lambda: play_battles(player1, n_battles))
+    t1.start()
+    t2 = Thread(target=lambda: play_battles(player2, n_battles))
+    t2.start()
+    # On the network side, send & accept N battles
+    asyncio.run(battle_handler(player1, player2, n_battles))
+    # Wait for thread completion
+    t1.join()
+    t2.join()
+
+    player1.close(purge=False)
+    player2.close(purge=False)
 
 
 def setup_and_load_model(model, model_kwargs, model_path):
@@ -258,23 +303,23 @@ if __name__ == "__main__":
     player1_kwargs = {}
     player2_kwargs = {}
     
-    player1 = simple_agent.GeneralAPISimpleAgent(
-        battle_format="gen8randombattle",
-        max_concurrent_battles=25,
+    player1 = simple_agent.SimpleRLPlayerTesting(
+        battle_format="gen8anythinggoes",
         model=player1_model,
-        device=device,
         start_timer_on_battle_start=True,
         player_configuration=PlayerConfiguration("Battle_Agent_1", None),
+        opponent=None,
+        start_challenging=False,
         **player1_kwargs,
     )
 
-    player2 = simple_agent.GeneralAPISimpleAgent(
-        battle_format="gen8randombattle",
-        max_concurrent_battles=25,
+    player2 = simple_agent.SimpleRLPlayerTesting(
+        battle_format="gen8anythinggoes",
         model=player2_model,
-        device=device,
         start_timer_on_battle_start=True,
         player_configuration=PlayerConfiguration("Battle_Agent_2", None),
+        opponent=None,
+        start_challenging=False,
         **player2_kwargs,
     )
 
@@ -315,12 +360,10 @@ if __name__ == "__main__":
         # Play battles
         print("Battling")
         start = time.time()
-        asyncio.run(
-            play_battles(
-                player1=player1,
-                player2=player2,
-                n_battles=team_generation_interval,
-            )
+        play_battles_wrapper(
+            player1=player1,
+            player2=player2,
+            n_battles=team_generation_interval,
         )
         end = time.time()
         print(f"Battles Completed: {team_generation_interval}")
