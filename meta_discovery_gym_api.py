@@ -354,8 +354,8 @@ if __name__ == "__main__":
         print(f"Time Taken: {end - start}s")
 
         # Make agents use the generated teams
-        player1._team = team_builder
-        player2._team = team_builder
+        player1.agent._team = team_builder
+        player2.agent._team = team_builder
 
         # Play battles
         print("Battling")
