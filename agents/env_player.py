@@ -14,12 +14,6 @@ class Gen8EnvSinglePlayerFixed(Gen8EnvSinglePlayer):
     def __init__(self, *args, **kwargs):
         super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
         self.done_training = False
-        self.all_wins = []
-        self.all_losses = []
-
-    def reset_statistics(self):
-        self.all_wins = []
-        self.all_losses = []
 
     def action_to_move(self, action: int, battle: Battle) -> BattleOrder:
         """Converts actions to move orders.
