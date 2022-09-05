@@ -73,6 +73,7 @@ def load_trackers_to_ppo_model(output_dir, ppo):
     all_entropy = []
     all_losses = []
     all_approx_kl_divs = []
+    time_taken_per_rollout = []
     # Sort files by iteration for proper graphing
     files_to_read = sorted(
         [
@@ -93,6 +94,7 @@ def load_trackers_to_ppo_model(output_dir, ppo):
         all_entropy.append(x["entropy"])
         all_losses.append(x["total_loss"])
         all_approx_kl_divs.append(x["approx_kl_divs"])
+        time_taken_per_rollout.append(x["time_taken_per_rollout"])
     all_rewards = torch.cat(all_rewards).flatten().cpu().numpy()
     all_episode_lengths = torch.cat(all_episode_lengths).flatten().cpu().numpy()
     all_episode_returns = torch.cat(all_episode_returns).flatten().cpu().numpy()
@@ -101,6 +103,7 @@ def load_trackers_to_ppo_model(output_dir, ppo):
     all_entropy = torch.cat(all_entropy).flatten().cpu().numpy()
     all_losses = torch.cat(all_losses).flatten().cpu().numpy()
     all_approx_kl_divs = torch.cat(all_approx_kl_divs).flatten().cpu().numpy()
+    time_taken_per_rollout = torch.cat(time_taken_per_rollout).flatten().cpu().numpy()
     ppo.rewards = all_rewards
     ppo.episode_lengths = all_episode_lengths
     ppo.episode_returns = all_episode_returns
@@ -109,3 +112,4 @@ def load_trackers_to_ppo_model(output_dir, ppo):
     ppo.entropy = all_entropy
     ppo.total_losses = all_losses
     ppo.approx_kl_divs = all_approx_kl_divs
+    ppo.time_taken_per_rollout = time_taken_per_rollout

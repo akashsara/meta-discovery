@@ -2,6 +2,7 @@
 # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py#L257
 import os
 import sys
+import time
 
 import numpy as np
 import torch
@@ -97,6 +98,7 @@ class PPOAgent:
         self.entropy = []
         self.total_losses = []
         self.approx_kl_divs = []
+        self.time_taken_per_rollout = []
 
         # Print model
         print(self.model)
@@ -120,6 +122,7 @@ class PPOAgent:
         self.current_episode_length = 0
         self.current_episode_returns = 0
         for rollout in range(num_rollouts):
+            start = time.time()
             # Clear memory so that we have fresh rollouts
             self.memory.clear()
             # Gather fresh data
@@ -140,6 +143,9 @@ class PPOAgent:
                 loss_idx = len(self.total_losses)
                 self.train()
                 print(f"Mean Loss: {np.mean(self.total_losses[loss_idx:]):.4f}")
+            time_taken = time.time() - start
+            self.time_taken_per_rollout.append(time_taken)
+            print(f"Rollout [{rollout+1}/{num_rollouts}] Completed in {time_taken:.4f}s")
 
     def collect_rollouts(self, environment, state):
         for step in range(self.steps_per_rollout):
@@ -395,6 +401,12 @@ class PPOAgent:
                 "approximate KL-divergence",
                 os.path.join(output_path, f"approx_kl_divs_{suffix}.jpg"),
             )
+            graphics.plot_and_save_loss(
+                self.time_taken_per_rollout,
+                "rollout",
+                "time_taken",
+                os.path.join(output_path, f"time_taken_per_rollout_{suffix}.jpg"),
+            )
         # Save trackers
         torch.save(
             {
@@ -406,6 +418,7 @@ class PPOAgent:
                 "entropy": torch.tensor(self.entropy),
                 "total_loss": torch.tensor(self.total_losses),
                 "approx_kl_divs": torch.tensor(self.approx_kl_divs),
+                "time_taken_per_rollout": torch.tensor(self.time_taken_per_rollout),
             },
             os.path.join(output_path, f"statistics_{suffix}.pt"),
         )
@@ -418,6 +431,7 @@ class PPOAgent:
             self.entropy = []
             self.total_losses = []
             self.approx_kl_divs = []
+            self.time_taken_per_rollout = []
 
     def save(self, output_path, reset_trackers=False, create_plots=True):
         self.plot_and_save_metrics(
