@@ -77,6 +77,12 @@ def pokemon_name_edge_case_handler(pokemon, moveset_name):
         else:
             pokemon_id = "zygarde"
             pokemon_name = "Zygarde"
+    elif pokemon_id == "darmanitangalarzen":
+        pokemon_id = "darmanitangalar"
+        pokemon_name = "Darmanitan-Galar"
+    elif pokemon_id == "darmanitanzen":
+        pokemon_id = "darmanitan"
+        pokemon_name = "Darmanitan"
     else:
         pokemon_name = pokemon
 
@@ -86,5 +92,6 @@ def edge_case_handler(pokemon_id, moveset):
     if pokemon_id in ["genesectdouse", "pichu"]: 
         moveset["shiny"] = True
     if pokemon_id == "poliwhirl":
+        # The scraped moveset is illegal so we define our own
         moveset["moves"] = ["waterfall", "earthquake", "hypnosis", "poweruppunch"]
     return moveset
