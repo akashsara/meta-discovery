@@ -78,9 +78,10 @@ if __name__ == "__main__":
         moveset_database, current_tier, ban_list
     )
     # Setup meta discovery database & load existing one if possible
+    print("---" * 30)
+    print("Setting up Meta Discovery database.")
     meta_discovery_database = MetaDiscoveryDatabase(moveset_database)
     if os.path.exists(meta_discovery_db_path):
-        print("---" * 30)
         print("Found existing database. Loading...")
         meta_discovery_database.load(meta_discovery_db_path)
         print(f"Load complete. {meta_discovery_database.num_battles} Battles Complete")
