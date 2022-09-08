@@ -31,7 +31,7 @@ valid_metas = [
     "gen8zu",
     "gen8lc",
 ]
-months = ["05", "06", "07"]
+months = ["05", "06", "07", "08"]
 moveset_db_path = "moveset_database.joblib"
 
 # Load our existing movesets so we can ignore Pokemon with existing data

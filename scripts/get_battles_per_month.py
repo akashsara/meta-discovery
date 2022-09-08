@@ -8,7 +8,7 @@ def get_num_battles(url):
     return int(response.text.split("\n")[0].split(":")[-1].strip())
 
 year_list = ["2022"]
-month_list = ["01", "02", "03", "04", "05", "06", "07"]
+month_list = ["01", "02", "03", "04", "05", "06", "07", "08"]
 meta_list = ["gen8anythinggoes", "gen8ubers", "gen8ou", "gen8uu", "gen8ru", "gen8nu", "gen8pu", "gen8zu", "gen8lc"]
 
 results = {}
