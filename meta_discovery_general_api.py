@@ -11,11 +11,13 @@ from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents import simple_agent, full_state_agent
 from models import simple_models, full_state_models
 from scripts.meta_discovery_utils import LinearDecayEpsilon
+from scripts.meta_discovery_utils import all_tiers_banlist, legality_checker
 from poke_env.player_configuration import PlayerConfiguration
 from meta_discovery import TeamBuilder, MetaDiscoveryDatabase
 
 gpu = torch.cuda.is_available()
 device = torch.device("cuda" if gpu else "cpu")
+
 
 async def play_battles(player1, player2, n_battles):
     await player1.battle_against(player2, n_battles=n_battles)
@@ -45,14 +47,50 @@ if __name__ == "__main__":
     epsilon_min = 0.1
     epsilon_max = 1.0
     epsilon_decay = 20000
+    # Choose metagame to play in
+    metagame = "gen8ou"
     # Setup banlist
-    all_tiers_banlist = {}
-    tiers_to_ban = []
+    current_tier = metagame.split("gen8")[1]
+    print("---" * 40)
+    print(f"Tier Selected: {current_tier}")
     ban_list = []
-    for tier in tiers_to_ban:
+    for tier in all_tiers_banlist:
         ban_list.extend(all_tiers_banlist[tier])
+        if tier == current_tier:
+            break
+    print("---" * 30)
+    print("Ban List in Effect:")
+    print(ban_list)
     # Set random seed for reproducible results
     random_seed = 42
+
+    # Use random seeds
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+    _ = torch.manual_seed(random_seed)
+
+    # Load moveset DB
+    moveset_database = joblib.load(moveset_db_path)
+    # Remove illegal moves/items/abilities based on tier
+    # Also remove Pokemon that have no movesets due to the above
+    print("---" * 30)
+    moveset_database, ban_list = legality_checker(
+        moveset_database, current_tier, ban_list
+    )
+    # Setup meta discovery database & load existing one if possible
+    meta_discovery_database = MetaDiscoveryDatabase(moveset_database)
+    if os.path.exists(meta_discovery_db_path):
+        print("---" * 30)
+        print("Found existing database. Loading...")
+        meta_discovery_database.load(meta_discovery_db_path)
+        print(f"Load complete. {meta_discovery_database.num_battles} Battles Complete")
+
+    exploration_control = LinearDecayEpsilon(epsilon_max, epsilon_min, epsilon_decay)
+
+    all_pokemon = list(meta_discovery_database.key2pokemon.values())
+    team_builder = TeamBuilder(
+        exploration_control, moveset_database, all_pokemon, pokedex_json_path, ban_list
+    )
 
     # Load trained models to use for each agent
     player1_model_class = simple_models.SimpleActorCriticModel
@@ -77,9 +115,9 @@ if __name__ == "__main__":
     # Create our battle agents
     player1_kwargs = {}
     player2_kwargs = {}
-    
+
     player1 = simple_agent.GeneralAPISimpleAgent(
-        battle_format="gen8anythinggoes",
+        battle_format=metagame,
         max_concurrent_battles=25,
         model=player1_model,
         device=device,
@@ -89,7 +127,7 @@ if __name__ == "__main__":
     )
 
     player2 = simple_agent.GeneralAPISimpleAgent(
-        battle_format="gen8anythinggoes",
+        battle_format=metagame,
         max_concurrent_battles=25,
         model=player2_model,
         device=device,
@@ -98,27 +136,7 @@ if __name__ == "__main__":
         **player2_kwargs,
     )
 
-    # Use random seeds
-    random.seed(random_seed)
-    np.random.seed(random_seed)
-    _ = torch.manual_seed(random_seed)
-
-    # Load moveset DB
-    moveset_database = joblib.load(moveset_db_path)
-    # Setup meta discovery database & load existing one if possible
-    meta_discovery_database = MetaDiscoveryDatabase(moveset_database)
-    if os.path.exists(meta_discovery_db_path):
-        print("Found existing database. Loading...")
-        meta_discovery_database.load(meta_discovery_db_path)
-        print(f"Load complete. {meta_discovery_database.num_battles} Battles Complete")
-
-    exploration_control = LinearDecayEpsilon(epsilon_max, epsilon_min, epsilon_decay)
-
-    all_pokemon = list(meta_discovery_database.key2pokemon.values())
-    team_builder = TeamBuilder(
-        exploration_control, moveset_database, all_pokemon, pokedex_json_path, ban_list
-    )
-
+    print("---" * 30)
     start_time = time.time()
     for i in range(num_battles_to_simulate // team_generation_interval):
         print(f"Epoch {i+1}")
