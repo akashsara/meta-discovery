@@ -168,7 +168,7 @@ class TeamBuilder(Teambuilder):
             # Pick a Pokemon
             pokemon = np.random.choice(a=self.all_pokemon, p=probabilities)
             # Select a random moveset for the selected Pokemon
-            team.append(np.random.choice(self.movesets[pokemon]["movesets"]))
+            team.append(np.random.choice(list(self.movesets[pokemon].values())))
             # Identify all Pokemon of the same species to apply species clause
             same_species = self.pokedex.get_same_species(pokemon)
             # Add Pokemon to the temporarily defined banlist
