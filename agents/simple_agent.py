@@ -159,11 +159,16 @@ class GeneralAPISimpleAgent(Player):
         # or is not available
         moves_base_power = -np.ones(4)
         moves_dmg_multiplier = np.ones(4)
-        for i, move in enumerate(list(battle.active_pokemon.moves.values())):
+        if battle.active_pokemon:
+            available_moves = list(battle.active_pokemon.moves.values())
+        else:
+            available_moves = []
+
+        for i, move in enumerate(available_moves):
             moves_base_power[i] = (
                 move.base_power / 100
             )  # Simple rescaling to facilitate learning
-            if move.type:
+            if move.type and battle.opponent_active_pokemon is not None:
                 moves_dmg_multiplier[i] = move.type.damage_multiplier(
                     battle.opponent_active_pokemon.type_1,
                     battle.opponent_active_pokemon.type_2,
@@ -192,11 +197,15 @@ class GeneralAPISimpleAgent(Player):
     def make_mask(self, battle):
         self.skip_step = False
         mask = []
-        moves = list(battle.active_pokemon.moves.values())
+        if battle.active_pokemon:
+            moves = list(battle.active_pokemon.moves.values())
+            available_z_moves = [x.id for x in battle.active_pokemon.available_z_moves]
+        else:
+            moves = []
+            available_z_moves = []
         team = list(battle.team.values())
         force_switch = (len(battle.available_switches) > 0) and battle.force_switch
         available_move_ids = [x.id for x in battle.available_moves]
-        available_z_moves = [x.id for x in battle.active_pokemon.available_z_moves]
 
         for action in range(len(self.action_space)):
             if (
@@ -289,16 +298,20 @@ class GeneralAPISimpleAgent(Player):
         :return: the order to send to the server.
         :rtype: str
         """
-        moves = list(battle.active_pokemon.moves.values())
+        if battle.active_pokemon:
+            moves = list(battle.active_pokemon.moves.values())
+            available_z_moves = [
+                move.id for move in battle.active_pokemon.available_z_moves
+            ]
+        else:
+            moves = []
+            available_z_moves = []
         team = list(battle.team.values())
         force_switch = (len(battle.available_switches) > 0) and battle.force_switch
         # We use the ID of each move here since in some cases
         # The same moves might be in both battle.available_moves
         # and battle.active_pokemon.moves but they may not be the same object
         available_move_ids = [move.id for move in battle.available_moves]
-        available_z_moves = [
-            move.id for move in battle.active_pokemon.available_z_moves
-        ]
 
         if action == -1:
             return ForfeitBattleOrder()
