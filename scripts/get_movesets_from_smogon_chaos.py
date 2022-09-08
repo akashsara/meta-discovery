@@ -17,6 +17,7 @@ We then generate a single moveset for them based on majority vote.
 import requests
 import joblib
 import sys
+
 sys.path.insert(0, "./")
 import scripts.scraping_utils as utils
 
@@ -53,7 +54,9 @@ for month in months:
         total_battles += int(result["info"]["number of battles"])
         result = result["data"]
         for pokemon, pokemon_info in result.items():
-            pokemon_id, pokemon_name = utils.pokemon_name_edge_case_handler(pokemon, "Max Usage")
+            pokemon_id, pokemon_name = utils.pokemon_name_edge_case_handler(
+                pokemon, "Max Usage"
+            )
             # Ignore Pokemon for which we already have data
             if pokemon_id in moveset_database:
                 continue
@@ -64,22 +67,30 @@ for month in months:
             if "moves" not in data[pokemon_id]:
                 data[pokemon_id]["moves"] = {}
             for move, n_uses in pokemon_info["Moves"].items():
-                data[pokemon_id]["moves"][move] = data[pokemon_id]["moves"].get(move, 0) + int(n_uses)
+                data[pokemon_id]["moves"][move] = data[pokemon_id]["moves"].get(
+                    move, 0
+                ) + int(n_uses)
             # Scrape Abilities
             if "abilities" not in data[pokemon_id]:
                 data[pokemon_id]["abilities"] = {}
             for ability, n_uses in pokemon_info["Abilities"].items():
-                data[pokemon_id]["abilities"][ability] = data[pokemon_id]["abilities"].get(ability, 0) + int(n_uses)
+                data[pokemon_id]["abilities"][ability] = data[pokemon_id][
+                    "abilities"
+                ].get(ability, 0) + int(n_uses)
             # Scrape Items
             if "items" not in data[pokemon_id]:
                 data[pokemon_id]["items"] = {}
             for item, n_uses in pokemon_info["Items"].items():
-                data[pokemon_id]["items"][item] = data[pokemon_id]["items"].get(item, 0) + int(n_uses)
+                data[pokemon_id]["items"][item] = data[pokemon_id]["items"].get(
+                    item, 0
+                ) + int(n_uses)
             # Scrape Nature + EV Spreads
             if "spreads" not in data[pokemon_id]:
                 data[pokemon_id]["spreads"] = {}
             for spread, n_uses in pokemon_info["Spreads"].items():
-                data[pokemon_id]["spreads"][spread] = data[pokemon_id]["spreads"].get(spread, 0) + int(n_uses)
+                data[pokemon_id]["spreads"][spread] = data[pokemon_id]["spreads"].get(
+                    spread, 0
+                ) + int(n_uses)
         print(f"{month}: {meta}")
 
 # Save extracted raw data
@@ -93,24 +104,40 @@ movesets = {}
 for pokemon_id in data:
     x = data[pokemon_id]
     # Sort moves by frequency & take the top 4
-    moves = list(dict(sorted(x["moves"].items(), key=lambda item: item[1], reverse=True)).keys())
+    moves = list(
+        dict(sorted(x["moves"].items(), key=lambda item: item[1], reverse=True)).keys()
+    )
     # Remove invalid entries
     moves = [move for move in moves if move not in ["", ":"]]
     moves = moves[:4]
     # Sort abilities by frequency & take the top 1
-    abilities = list(dict(sorted(x["abilities"].items(), key=lambda item: item[1], reverse=True)).keys())
+    abilities = list(
+        dict(
+            sorted(x["abilities"].items(), key=lambda item: item[1], reverse=True)
+        ).keys()
+    )
     # Remove invalid entries
     abilities = [ability for ability in abilities if ability not in ["", ":"]]
     ability = abilities[0]
     # Sort items by frequency & take the top 1
-    items = list(dict(sorted(x["items"].items(), key=lambda item: item[1], reverse=True)).keys())
+    items = list(
+        dict(sorted(x["items"].items(), key=lambda item: item[1], reverse=True)).keys()
+    )
     # Remove invalid entries
     items = [item for item in items if item not in ["", ":", "nothing"]]
     item = items[0]
     # Sort Nature + EV Spreads by frequence & take the top 1
-    spreads = list(dict(sorted(x["spreads"].items(), key=lambda item: item[1], reverse=True)).keys())
+    spreads = list(
+        dict(
+            sorted(x["spreads"].items(), key=lambda item: item[1], reverse=True)
+        ).keys()
+    )
     # Remove invalid entries - EV total less than 500
-    spreads = [spread for spread in spreads if sum([int(x) for x in spread.split(":")[1].split("/")]) > 500]
+    spreads = [
+        spread
+        for spread in spreads
+        if sum([int(x) for x in spread.split(":")[1].split("/")]) > 500
+    ]
     spread = spreads[0]
     # Convert spread to Nature + EVs
     nature, evs = utils.spread2nature_and_evs(spread)
@@ -128,9 +155,6 @@ for pokemon_id in data:
     moveset = utils.edge_case_handler(pokemon_id, moveset)
     moveset = utils.moveset2showdownformat(pokemon_name, moveset)
     # Insert into our DB
-    moveset_database[pokemon_id] = {
-        "movesets": [moveset],
-        "moveset_names": ["Max Usage"]
-    }       
+    moveset_database[pokemon_id] = {"Max Usage": moveset}
 
 joblib.dump(moveset_database, "moveset_database.joblib")

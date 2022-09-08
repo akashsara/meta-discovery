@@ -2,6 +2,7 @@ import requests
 import joblib
 from poke_env.data import to_id_str
 import sys
+
 sys.path.insert(0, "./")
 import scripts.scraping_utils as utils
 
@@ -43,29 +44,27 @@ for meta in valid_metas:
                     if moveset["level"] in [5, 100]:
                         moveset["level"] = 100
                 # EDGE CASE HANDLER
-                pokemon_id, pokemon_name = utils.pokemon_name_edge_case_handler(pokemon, moveset_name)
+                pokemon_id, pokemon_name = utils.pokemon_name_edge_case_handler(
+                    pokemon, moveset_name
+                )
                 # Get the moveset in the Showdown format
                 moveset = utils.edge_case_handler(pokemon_id, moveset)
                 moveset = utils.moveset2showdownformat(pokemon_name, moveset)
                 # Append to our DB
                 if pokemon_id in moveset_database:
                     """
-                    Ignore a moveset if it was already there. Since we go from 
-                    highest meta -> lowest meta, we should have a moveset that 
-                    does better against good Pokemon. This might not be the 
-                    best way to do things since this potentially biases things 
+                    Ignore a moveset if it was already there. Since we go from
+                    highest meta -> lowest meta, we should have a moveset that
+                    does better against good Pokemon. This might not be the
+                    best way to do things since this potentially biases things
                     towards higher metas. But leaving it here for now.
                     """
-                    if moveset_name in moveset_database[pokemon_id]["moveset_names"]:
+                    if moveset_name in moveset_database[pokemon_id]:
                         continue
                     else:
-                        moveset_database[pokemon_id]["movesets"].append(moveset)
-                        moveset_database[pokemon_id]["moveset_names"].append(moveset_name)
+                        moveset_database[pokemon_id][moveset_name] = moveset
                 # Add to our DB if the Pokemon isn't there
                 else:
-                    moveset_database[pokemon_id] = {
-                        "movesets": [moveset],
-                        "moveset_names": [moveset_name]
-                    }
+                    moveset_database[pokemon_id] = {moveset_name: moveset}
 
 joblib.dump(moveset_database, "moveset_database.joblib")

@@ -90,6 +90,7 @@ def pokemon_name_edge_case_handler(pokemon, moveset_name):
 
 def edge_case_handler(pokemon_id, moveset):
     if pokemon_id in ["genesectdouse", "pichu"]: 
+        # These Pokemon have to be shiny for some scenarios
         moveset["shiny"] = True
     if pokemon_id == "poliwhirl":
         # The scraped moveset is illegal so we define our own
