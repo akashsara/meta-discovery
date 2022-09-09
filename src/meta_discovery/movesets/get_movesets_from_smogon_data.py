@@ -1,10 +1,7 @@
-import requests
 import joblib
-from poke_env.data import to_id_str
-import sys
+import requests
 
-sys.path.insert(0, "./")
-import scripts.scraping_utils as utils
+import scraping_utils as utils
 
 dataset_url = "https://play.pokemonshowdown.com/data/sets/gen8.json"
 valid_metas = [

@@ -6,17 +6,19 @@ So small state vs random/max_damage/smart max_damage
 """
 import json
 import os
+import sys
+
+sys.path.append("./")
 
 import numpy as np
 import torch
 import torch.nn as nn
+from agents.max_damage_agent import MaxDamagePlayer
+from agents.simple_agent import SimpleRLPlayer
+from agents.smart_max_damage_agent import SmartMaxDamagePlayer
+from models import simple_models
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
-
-from models import simple_models
-from agents.simple_agent import SimpleRLPlayer
-from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.dqn import DQNAgent
 from rl.memory import SequentialMemory
 from rl.policy import (
@@ -170,7 +172,7 @@ if __name__ == "__main__":
 
         # Save Model
         dqn.save(output_dir, reset_trackers=True, create_plots=False)
-        
+
         # Evaluate Model
         # Works only if NB_VALIDATION_EPISODES is set
         # And this isn't the last "epoch" [Since we do a full eval after this]
@@ -256,9 +258,17 @@ if __name__ == "__main__":
     all_rewards = []
     all_episode_lengths = []
     # Sort files by iteration for proper graphing
-    files_to_read = sorted([int(file.split(".pt")[0].split("_")[1]) for file in os.listdir(output_dir) if "statistics_" in file])
+    files_to_read = sorted(
+        [
+            int(file.split(".pt")[0].split("_")[1])
+            for file in os.listdir(output_dir)
+            if "statistics_" in file
+        ]
+    )
     for file in files_to_read:
-        x = torch.load(os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device)
+        x = torch.load(
+            os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device
+        )
         all_losses.append(x["loss"])
         all_rewards.append(x["reward"])
         all_episode_lengths.append(x["episode_lengths"])

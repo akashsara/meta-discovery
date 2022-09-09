@@ -4,19 +4,21 @@
 import asyncio
 import json
 import os
+import sys
 from threading import Thread
+
+sys.path.append("./")
 
 import numpy as np
 import torch
 import torch.nn as nn
+from agents.max_damage_agent import MaxDamagePlayer
+from agents.simple_agent import SimpleRLPlayer
+from agents.smart_max_damage_agent import SmartMaxDamagePlayer
+from models import simple_models
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.utils import to_id_str
-
-from models import full_state_models
-from agents.full_state_agent import FullStatePlayer
-from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.dqn import DQNAgent
 from rl.memory import SequentialMemory
 from rl.policy import (
@@ -68,7 +70,7 @@ def env_algorithm_wrapper(env_algorithm, player, kwargs):
 
 if __name__ == "__main__":
     # Config - Versioning
-    experiment_name = f"New_FullState_DQN_SelfPlay_v2"
+    experiment_name = f"New_Simple_DQN_SelfPlay_v2"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -92,11 +94,8 @@ if __name__ == "__main__":
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
     # Config = Model Setup
-    MODEL = full_state_models.BattleModel
-    MODEL_KWARGS = {
-        "pokemon_embedding_dim": 32,
-        "team_embedding_dim": 64,
-    }
+    MODEL = simple_models.SimpleModel
+    MODEL_KWARGS = {}
     memory_config = {"capacity": 10000}
 
     # Config - Policy Setup
@@ -112,20 +111,11 @@ if __name__ == "__main__":
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
     OPTIMIZER_KWARGS = {"lr": 0.00025}
-    
+
     # Config - Loss Setup
     LOSS = nn.SmoothL1Loss
     LOSS_KWARGS = {
         "beta": 0.01,
-    }
-
-    # Config - Model Save Directory/Config Directory + json info files
-    config = {
-        "create": True,
-        "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
-        "moves_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/moves.json",
-        "items_json": "https://raw.githubusercontent.com/akashsara/showdown-data/main/dist/data/items.json",
-        "lookup_filename": "player_lookup_dicts.joblib",
     }
 
     # Set random seed
@@ -144,18 +134,14 @@ if __name__ == "__main__":
     output_dir = os.path.join(model_dir, experiment_name)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    config["lookup_filename"] = os.path.join(output_dir, config["lookup_filename"])
 
     # Setup player
-    player1 = FullStatePlayer(
-        config,
+    player1 = SimpleRLPlayer(
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent1,
     )
-    config["create"] = False
-    player2 = FullStatePlayer(
-        config,
+    player2 = SimpleRLPlayer(
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent2,
@@ -173,9 +159,8 @@ if __name__ == "__main__":
     )
 
     # Grab some values from the environment to setup our model
-    MODEL_KWARGS["n_actions"] = len(player1.action_space)
-    MODEL_KWARGS["state_length_dict"] = player1.get_state_lengths()
-    MODEL_KWARGS["max_values_dict"] = player1.lookup["max_values"]
+    n_actions = len(player1.action_space)
+    MODEL_KWARGS["n_actions"] = n_actions
 
     # Setup memory
     memory = SequentialMemory(**memory_config)
@@ -313,9 +298,17 @@ if __name__ == "__main__":
     all_rewards = []
     all_episode_lengths = []
     # Sort files by iteration for proper graphing
-    files_to_read = sorted([int(file.split(".pt")[0].split("_")[1]) for file in os.listdir(output_dir) if "statistics_" in file])
+    files_to_read = sorted(
+        [
+            int(file.split(".pt")[0].split("_")[1])
+            for file in os.listdir(output_dir)
+            if "statistics_" in file
+        ]
+    )
     for file in files_to_read:
-        x = torch.load(os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device)
+        x = torch.load(
+            os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device
+        )
         all_losses.append(x["loss"])
         all_rewards.append(x["reward"])
         all_episode_lengths.append(x["episode_lengths"])

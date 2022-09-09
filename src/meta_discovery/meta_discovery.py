@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import random
 from poke_env.teambuilder.teambuilder import Teambuilder
-from scripts.meta_discovery_utils import Epsilon
+from policy import Epsilon
 
 class MetaDiscoveryDatabase:
     """

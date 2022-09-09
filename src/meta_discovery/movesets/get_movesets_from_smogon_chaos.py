@@ -14,12 +14,10 @@ the Pokemon for which we don't have movesets.
 We combine the statistics across tiers for these Pokemon.
 We then generate a single moveset for them based on majority vote.
 """
-import requests
 import joblib
-import sys
+import requests
 
-sys.path.insert(0, "./")
-import scripts.scraping_utils as utils
+import scraping_utils as utils
 
 valid_metas = [
     "gen8anythinggoes",

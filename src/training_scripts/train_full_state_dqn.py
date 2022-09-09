@@ -3,23 +3,23 @@
 
 import json
 import os
+import sys
+
+sys.path.append("./")
 
 import numpy as np
 import torch
 import torch.nn as nn
-from poke_env.player.random_player import RandomPlayer
-from poke_env.player_configuration import PlayerConfiguration
-
-from models import full_state_models
 from agents.full_state_agent import FullStatePlayer
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
+from models import full_state_models
+from poke_env.player.random_player import RandomPlayer
+from poke_env.player_configuration import PlayerConfiguration
 from rl.agents.dqn import DQNAgent
 from rl.memory import SequentialMemory
-from rl.policy import (
-    ExponentialDecayEpsilonGreedyPolicy,
-    LinearDecayEpsilonGreedyPolicy,
-)
+from rl.policy import (ExponentialDecayEpsilonGreedyPolicy,
+                       LinearDecayEpsilonGreedyPolicy)
 
 
 # This is the function that will be used to train the dqn

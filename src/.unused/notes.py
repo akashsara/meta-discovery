@@ -1,4 +1,8 @@
 """
+These are old notes for keras-rl. Not used anywhere.
+"""
+
+"""
 EpsGreedyQPolicy: Standard epsilon greedy policy
 LinearAnnealedPolicy: Linearly anneals the given attribute
 This effectively just reduces the value of epsilon over time.

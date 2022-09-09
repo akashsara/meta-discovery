@@ -1,20 +1,24 @@
-import joblib
-import os
 import asyncio
-import numpy as np
+import os
 import random
+import sys
+
+sys.path.append("./")
 import time
+
+import joblib
+import numpy as np
 import torch
-from poke_env.player.random_player import RandomPlayer
+from agents import full_state_agent, simple_agent
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
-from agents import simple_agent, full_state_agent
-from models import simple_models, full_state_models
-import utils
-from scripts.meta_discovery_utils import LinearDecayEpsilon
-from scripts.meta_discovery_utils import get_ban_list, legality_checker
+from models import full_state_models, simple_models
+from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
-from meta_discovery import TeamBuilder, MetaDiscoveryDatabase
+
+import utils
+from meta_discovery import MetaDiscoveryDatabase, TeamBuilder
+from policy import LinearDecayEpsilon
 
 gpu = torch.cuda.is_available()
 device = torch.device("cuda" if gpu else "cpu")
@@ -33,8 +37,8 @@ def setup_and_load_model(model, model_kwargs, model_path):
 
 
 if __name__ == "__main__":
-    moveset_db_path = "moveset_database.joblib"
-    meta_discovery_db_path = "meta_discovery_database.joblib"
+    moveset_db_path = "meta_discovery/data/moveset_database.joblib"
+    meta_discovery_db_path = "meta_discovery/data/meta_discovery_database.joblib"
     # Used to enforce species clause
     pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
     # Total num. battles to simulate
@@ -54,6 +58,19 @@ if __name__ == "__main__":
     metagame = "gen8ubers"
     # Set random seed for reproducible results
     random_seed = 42
+    # Setup player information
+    player1_model_class = simple_models.SimpleActorCriticModel
+    player1_model_path = "outputs/Simple_PPO_Base_v2.1/model_1024000.pt"
+    player1_model_kwargs = {
+        "n_actions": 22,
+        "n_obs": 10,
+    }
+    player2_model_class = simple_models.SimpleActorCriticModel
+    player2_model_path = "outputs/Simple_PPO_SelfPlay_v2.0/model_2047756.pt"
+    player2_model_kwargs = {
+        "n_actions": 22,
+        "n_obs": 10,
+    }
 
     # Use random seeds
     random.seed(random_seed)
@@ -64,7 +81,7 @@ if __name__ == "__main__":
     current_tier = metagame.split("gen8")[1]
     print("---" * 40)
     print(f"Tier Selected: {current_tier}")
-    ban_list = get_ban_list(current_tier)
+    ban_list = utils.get_ban_list(current_tier)
     print("---" * 30)
     print("Ban List in Effect:")
     print(ban_list)
@@ -74,7 +91,7 @@ if __name__ == "__main__":
     # Remove illegal moves/items/abilities based on tier
     # Also remove Pokemon that have no movesets due to the above
     print("---" * 30)
-    moveset_database, ban_list = legality_checker(
+    moveset_database, ban_list = utils.legality_checker(
         moveset_database, current_tier, ban_list
     )
     # Setup meta discovery database & load existing one if possible
@@ -94,18 +111,6 @@ if __name__ == "__main__":
     )
 
     # Load trained models to use for each agent
-    player1_model_class = simple_models.SimpleActorCriticModel
-    player1_model_path = "trained/Simple_PPO_Base_v2.1/model_1024000.pt"
-    player1_model_kwargs = {
-        "n_actions": 22,
-        "n_obs": 10,
-    }
-    player2_model_class = simple_models.SimpleActorCriticModel
-    player2_model_path = "trained/Simple_PPO_SelfPlay_v2.0/model_2047756.pt"
-    player2_model_kwargs = {
-        "n_actions": 22,
-        "n_obs": 10,
-    }
     player1_model = setup_and_load_model(
         player1_model_class, player1_model_kwargs, player1_model_path
     )

@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 # https://poke-env.readthedocs.io/en/stable/connecting_to_showdown_and_challenging_humans.html
 import asyncio
+import sys
 
-from poke_env.player.random_player import RandomPlayer
-from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
-from agents import simple_agent, full_state_agent
-from models import simple_models, full_state_models
+sys.path.append("./")
 
-from poke_env.player_configuration import PlayerConfiguration
-from poke_env.server_configuration import ShowdownServerConfiguration
 import joblib
 import numpy as np
-from pokemon_showdown_accounts import id_dict
 import torch
+from agents import full_state_agent, simple_agent
+from agents.max_damage_agent import MaxDamagePlayer
+from agents.smart_max_damage_agent import SmartMaxDamagePlayer
+from models import full_state_models, simple_models
+from poke_env.player.random_player import RandomPlayer
+from poke_env.player_configuration import PlayerConfiguration
+from poke_env.server_configuration import ShowdownServerConfiguration
+
+from pokemon_showdown_accounts import id_dict
 
 # Choose Agent:
 #   Random Agent, Max Damage Agent, Smart Max Damage Agent

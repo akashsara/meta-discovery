@@ -4,25 +4,25 @@
 import asyncio
 import json
 import os
+import sys
 from threading import Thread
+
+sys.path.append("./")
 
 import numpy as np
 import torch
 import torch.nn as nn
+from agents.full_state_agent import FullStatePlayer
+from agents.max_damage_agent import MaxDamagePlayer
+from agents.smart_max_damage_agent import SmartMaxDamagePlayer
+from models import full_state_models
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.utils import to_id_str
-
-from models import simple_models
-from agents.simple_agent import SimpleRLPlayer
-from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from rl.agents.dqn import DQNAgent
 from rl.memory import SequentialMemory
-from rl.policy import (
-    ExponentialDecayEpsilonGreedyPolicy,
-    LinearDecayEpsilonGreedyPolicy,
-)
+from rl.policy import (ExponentialDecayEpsilonGreedyPolicy,
+                       LinearDecayEpsilonGreedyPolicy)
 
 
 # This is the function that will be used to train the dqn
@@ -68,7 +68,7 @@ def env_algorithm_wrapper(env_algorithm, player, kwargs):
 
 if __name__ == "__main__":
     # Config - Versioning
-    experiment_name = f"New_Simple_DQN_SelfPlay_v2"
+    experiment_name = f"New_FullState_DQN_SelfPlay_v2"
     hash_name = str(hash(experiment_name))[2:12]
 
     # Config - Model Save Directory
@@ -92,8 +92,11 @@ if __name__ == "__main__":
     NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
     # Config = Model Setup
-    MODEL = simple_models.SimpleModel
-    MODEL_KWARGS = {}
+    MODEL = full_state_models.BattleModel
+    MODEL_KWARGS = {
+        "pokemon_embedding_dim": 32,
+        "team_embedding_dim": 64,
+    }
     memory_config = {"capacity": 10000}
 
     # Config - Policy Setup
@@ -116,6 +119,15 @@ if __name__ == "__main__":
         "beta": 0.01,
     }
 
+    # Config - Model Save Directory/Config Directory + json info files
+    config = {
+        "create": True,
+        "pokemon_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json",
+        "moves_json": "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/moves.json",
+        "items_json": "https://raw.githubusercontent.com/akashsara/showdown-data/main/dist/data/items.json",
+        "lookup_filename": "player_lookup_dicts.joblib",
+    }
+
     # Set random seed
     np.random.seed(RANDOM_SEED)
     _ = torch.manual_seed(RANDOM_SEED)
@@ -132,14 +144,18 @@ if __name__ == "__main__":
     output_dir = os.path.join(model_dir, experiment_name)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    config["lookup_filename"] = os.path.join(output_dir, config["lookup_filename"])
 
     # Setup player
-    player1 = SimpleRLPlayer(
+    player1 = FullStatePlayer(
+        config,
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent1,
     )
-    player2 = SimpleRLPlayer(
+    config["create"] = False
+    player2 = FullStatePlayer(
+        config,
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent2,
@@ -157,8 +173,9 @@ if __name__ == "__main__":
     )
 
     # Grab some values from the environment to setup our model
-    n_actions = len(player1.action_space)
-    MODEL_KWARGS["n_actions"] = n_actions
+    MODEL_KWARGS["n_actions"] = len(player1.action_space)
+    MODEL_KWARGS["state_length_dict"] = player1.get_state_lengths()
+    MODEL_KWARGS["max_values_dict"] = player1.lookup["max_values"]
 
     # Setup memory
     memory = SequentialMemory(**memory_config)

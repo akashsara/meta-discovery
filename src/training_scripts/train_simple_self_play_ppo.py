@@ -1,26 +1,48 @@
 # -*- coding: utf-8 -*-
-# https://github.com/hsahovic/poke-env/blob/master/examples/rl_with_new_open_ai_gym_wrapper.py
+# https://github.com/hsahovic/poke-env/blob/master/examples/experimental-self-play.py
 
+import asyncio
 import json
 import os
+import sys
 import time
+from threading import Thread
+
+sys.path.append("./")
 
 import numpy as np
 import torch
-from poke_env.player.random_player import RandomPlayer
-from poke_env.player_configuration import PlayerConfiguration
-
-import utils
+import training_utils as utils
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.simple_agent import SimpleRLPlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from models import simple_models
+from poke_env.player.random_player import RandomPlayer
+from poke_env.player_configuration import PlayerConfiguration
 from rl.agents.ppo import PPOAgent
+
+
+async def battle_handler(player1, player2, num_challenges):
+    await asyncio.gather(
+        player1.agent.accept_challenges(player2.username, num_challenges),
+        player2.agent.send_challenges(player1.username, num_challenges),
+    )
+
+
+def training_function(player, model, model_kwargs):
+    # Fit (train) model as necessary.
+    model.fit(player, **model_kwargs)
+    player.done_training = True
+    # Play out the remaining battles so both fit() functions complete
+    # We use 99 to give the agent an invalid option so it's forced
+    # to take a random legal action
+    while player.current_battle and not player.current_battle.finished:
+        _ = player.step(99)
+
 
 if __name__ == "__main__":
     # Config - Versioning
-    training_opponent = "random"  # random, max, smart
-    experiment_name = f"Simple_PPO_Base_v1"
+    experiment_name = f"Simple_PPO_SelfPlay_v1"
     server_port = 8000
     hash_name = str(hash(experiment_name))[2:12]
     expt_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
@@ -50,7 +72,7 @@ if __name__ == "__main__":
         "c2": 0.002,  # Loss constant 2
         "normalize_advantages": False,
         "use_action_mask": True,
-        "memory_size": STEPS_PER_ROLLOUT,
+        "memory_size": STEPS_PER_ROLLOUT * 2,  # Since selfplay
     }
 
     # Config = Model Setup
@@ -71,7 +93,8 @@ if __name__ == "__main__":
 
     # Setup agent usernames for connecting to local showdown
     # This lets us train multiple agents while connecting to the same server
-    training_agent = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent1 = PlayerConfiguration(hash_name + "_P1", None)
+    training_agent2 = PlayerConfiguration(hash_name + "_P2", None)
     test_agent = PlayerConfiguration(hash_name + "_Test", None)
     rand_player = PlayerConfiguration(hash_name + "_Rand", None)
     max_player = PlayerConfiguration(hash_name + "_Max", None)
@@ -99,22 +122,21 @@ if __name__ == "__main__":
         server_configuration=server_config,
     )
 
-    if training_opponent == "random":
-        training_opponent = random_agent
-    elif training_opponent == "max":
-        training_opponent = max_damage_agent
-    elif training_opponent == "smart":
-        training_opponent = smart_max_damage_agent
-    else:
-        raise ValueError("Unknown training opponent.")
-
     # Setup player
-    env_player = SimpleRLPlayer(
+    player1 = SimpleRLPlayer(
         battle_format="gen8randombattle",
         log_level=30,
-        player_configuration=training_agent,
+        player_configuration=training_agent1,
         server_configuration=server_config,
-        opponent=training_opponent,
+        opponent="placeholder",
+        start_challenging=False,
+    )
+    player2 = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=training_agent2,
+        server_configuration=server_config,
+        opponent="placeholder",
         start_challenging=False,
     )
     # Setup independent player for testing
@@ -129,7 +151,7 @@ if __name__ == "__main__":
 
     # Grab some values from the environment to setup our model
     state_size = 10  # Hard-coded for the simple model
-    n_actions = env_player.action_space.n
+    n_actions = player1.action_space.n
     MODEL_KWARGS["n_actions"] = n_actions
 
     # Defining our DQN
@@ -156,13 +178,39 @@ if __name__ == "__main__":
             f"initial",
             evaluation_results,
         )
+
     num_epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
     for i in range(num_epochs):
-        # Train Model
-        env_player.start_challenging()
-        ppo.fit(env_player, VALIDATE_EVERY, do_training=True)
-        # Shutdown training agent
-        env_player.close(purge=False)
+        # Setup arguments to pass to the training function
+        p1_env_kwargs = {
+            "total_steps": VALIDATE_EVERY,
+            "do_training": True,
+        }
+        p2_env_kwargs = {
+            "total_steps": VALIDATE_EVERY,
+            "do_training": False,
+        }
+
+        # Self-Play bits
+        player1.done_training = False
+        player2.done_training = False
+        # 1. Get event loop
+        loop = asyncio.get_event_loop()
+        # Make Two Threads; one per player and run model.fit()
+        t1 = Thread(target=lambda: training_function(player1, ppo, p1_env_kwargs))
+        t1.start()
+
+        t2 = Thread(target=lambda: training_function(player2, ppo, p2_env_kwargs))
+        t2.start()
+        # On the network side, keep sending & accepting battles
+        while not player1.done_training or not player2.done_training:
+            loop.run_until_complete(battle_handler(player1, player2, 1))
+        # Wait for thread completion
+        t1.join()
+        t2.join()
+
+        player1.close(purge=False)
+        player2.close(purge=False)
 
         # Evaluate Model
         if NB_VALIDATION_EPISODES > 0 and i + 1 != num_epochs:
@@ -179,7 +227,6 @@ if __name__ == "__main__":
                 f"validation_{i+1}",
                 evaluation_results,
             )
-
     # Save final model
     ppo.save(output_dir, reset_trackers=True, create_plots=False)
 

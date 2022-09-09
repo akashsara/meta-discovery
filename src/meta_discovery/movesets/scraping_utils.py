@@ -88,8 +88,9 @@ def pokemon_name_edge_case_handler(pokemon, moveset_name):
 
     return pokemon_id, pokemon_name
 
+
 def edge_case_handler(pokemon_id, moveset):
-    if pokemon_id in ["genesectdouse", "pichu"]: 
+    if pokemon_id in ["genesectdouse", "pichu"]:
         # These Pokemon have to be shiny for some scenarios
         moveset["shiny"] = True
     if pokemon_id == "poliwhirl":
