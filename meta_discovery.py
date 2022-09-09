@@ -151,11 +151,11 @@ class TeamBuilder(Teambuilder):
             # 1 - Epsilon chance of picking a team based on winrate
             if np.random.random() > self.epsilon.calculate_epsilon(database.num_battles):
                 # Sample based on winrate
-                probabilities = database.winrates
+                probabilities = database.winrates.copy()
             # There is an epsilon chance of picking low-usage Pokemon
             else:
                 # Sample based on 1 - pickrate
-                probabilities = 1 - database.pickrates
+                probabilities = 1 - database.pickrates.copy()
             # Zero out probabilities of banned Pokemon
             ban_list_ids = [
                 database.pokemon2key[pokemon]
