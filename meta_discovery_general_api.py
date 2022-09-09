@@ -10,6 +10,7 @@ from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents import simple_agent, full_state_agent
 from models import simple_models, full_state_models
+import utils
 from scripts.meta_discovery_utils import LinearDecayEpsilon
 from scripts.meta_discovery_utils import get_ban_list, legality_checker
 from poke_env.player_configuration import PlayerConfiguration
@@ -47,6 +48,8 @@ if __name__ == "__main__":
     epsilon_min = 0.1
     epsilon_max = 1.0
     epsilon_decay = 20000
+    # Set local port that Showdown is running on
+    server_port = 8000
     # Choose metagame to play in
     metagame = "gen8ubers"
     # Set random seed for reproducible results
@@ -109,6 +112,10 @@ if __name__ == "__main__":
     player2_model = setup_and_load_model(
         player2_model_class, player2_model_kwargs, player2_model_path
     )
+
+    # Setup server configuration
+    # Maintain servers on different ports to avoid Compute Canada errors
+    server_config = utils.generate_server_configuration(server_port)
 
     # Create our battle agents
     player1_kwargs = {}
