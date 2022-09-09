@@ -142,6 +142,14 @@ def legality_checker(moveset_database, tier, ban_list):
 
     return moveset_database, ban_list
 
+def get_ban_list(current_tier):
+    ban_list = []
+    for tier in all_tiers_banlist:
+        ban_list.extend(all_tiers_banlist[tier])
+        if tier == current_tier:
+            break
+    return ban_list
+
 
 all_tiers_banlist = {
     "anythinggoes": [],

@@ -11,7 +11,7 @@ from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from agents import simple_agent, full_state_agent
 from models import simple_models, full_state_models
 from scripts.meta_discovery_utils import LinearDecayEpsilon
-from scripts.meta_discovery_utils import all_tiers_banlist, legality_checker
+from scripts.meta_discovery_utils import get_ban_list, legality_checker
 from poke_env.player_configuration import PlayerConfiguration
 from meta_discovery import TeamBuilder, MetaDiscoveryDatabase
 
@@ -48,19 +48,7 @@ if __name__ == "__main__":
     epsilon_max = 1.0
     epsilon_decay = 20000
     # Choose metagame to play in
-    metagame = "gen8ou"
-    # Setup banlist
-    current_tier = metagame.split("gen8")[1]
-    print("---" * 40)
-    print(f"Tier Selected: {current_tier}")
-    ban_list = []
-    for tier in all_tiers_banlist:
-        ban_list.extend(all_tiers_banlist[tier])
-        if tier == current_tier:
-            break
-    print("---" * 30)
-    print("Ban List in Effect:")
-    print(ban_list)
+    metagame = "gen8ubers"
     # Set random seed for reproducible results
     random_seed = 42
 
@@ -68,6 +56,15 @@ if __name__ == "__main__":
     random.seed(random_seed)
     np.random.seed(random_seed)
     _ = torch.manual_seed(random_seed)
+
+    # Setup banlist
+    current_tier = metagame.split("gen8")[1]
+    print("---" * 40)
+    print(f"Tier Selected: {current_tier}")
+    ban_list = get_ban_list(current_tier)
+    print("---" * 30)
+    print("Ban List in Effect:")
+    print(ban_list)
 
     # Load moveset DB
     moveset_database = joblib.load(moveset_db_path)
