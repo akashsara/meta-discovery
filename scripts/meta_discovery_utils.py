@@ -91,8 +91,8 @@ def legality_checker(moveset_database, tier, ban_list):
             ):
                 print(f"ARENA TRAP CLAUSE: {pokemon} - {moveset_name}")
                 to_delete.append((pokemon, moveset_name))
-            # Shadow Tag is banned below Ubers
-            elif tier != "ubers" and (
+            # Shadow Tag is banned in all competitive tiers
+            elif (
                 "Shadow Tag" in moveset
                 or "shadow tag" in moveset
                 or "shadowtag" in moveset
@@ -130,6 +130,8 @@ def legality_checker(moveset_database, tier, ban_list):
     print("Deleting Illegal Movesets")
     for (pokemon, moveset) in to_delete:
         del moveset_database[pokemon][moveset]
+    
+    for pokemon in moveset_database:
         # If we run into a scenario where there are no movesets for a Pokemon
         # We simply add it to the ban list
         # Since a ban has caused us to remove this moveset
