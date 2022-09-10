@@ -1,8 +1,61 @@
-import requests
+import joblib
+import os
 import sys
 
 sys.path.append("./")
 from common_utils import *
+
+tier_list_location = "meta_discovery/data/tier_data.joblib"
+tier_mapper = {
+    "anythinggoes": "AG",
+    "ubers": "Uber",
+    "ou": "OU",
+    "uu": "UU",
+    "ru": "RU",
+    "nu": "NU",
+    "pu": "PU",
+    "zu": "ZU",
+    "lc": "LC",
+}
+all_tiers = [
+    # Anything Goes
+    "AG",
+    "(AG)",
+    # Ubers
+    "Uber",
+    "(Uber)",
+    # OU
+    "OU",
+    "(OU)",
+    # UU
+    "UUBL",
+    "(UUBL)",
+    "UU",
+    "(UU)",
+    # RU
+    "RUBL",
+    "(RUBL)",
+    "RU",
+    "(RU)",
+    # NU
+    "NUBL",
+    "(NUBL)",
+    "NU",
+    "(NU)",
+    # PU
+    "PUBL",
+    "(PUBL)",
+    "PU",
+    "(PU)",
+    # ZU
+    "ZUBL",
+    "(ZUBL)",
+    "ZU",
+    "(ZU)",
+    # LC
+    "LC",
+    "(LC)",
+]
 
 
 def legality_checker(moveset_database, tier, ban_list):
@@ -116,110 +169,25 @@ def legality_checker(moveset_database, tier, ban_list):
 
 
 def get_ban_list(current_tier):
-    ban_list = []
-    for tier in all_tiers_banlist:
-        ban_list.extend(all_tiers_banlist[tier])
+    if not os.path.exists(tier_list_location):
+        raise Exception(
+            f"We couldn't find the tier list file at {tier_list_location}. Please run meta_discovery/scripts/download_tiers.py"
+        )
+
+    current_tier = tier_mapper[current_tier]
+    banned_tiers = []
+    for tier in all_tiers:
         if tier == current_tier:
             break
+        banned_tiers.append(tier)
+    print("Banned Tiers:")
+    print(banned_tiers)
+
+    ban_list = []
+    tier_list = joblib.load(tier_list_location)
+    for pokemon, information in tier_list.items():
+        if "tier" not in information:
+            continue
+        if information["tier"] in banned_tiers:
+            ban_list.append(pokemon)
     return ban_list
-
-
-all_tiers_banlist = {
-    "anythinggoes": [],
-    "ubers": ["zacian", "zaciancrowned"],
-    "ou": [
-        "calyrexice",
-        "calyrexshadow",
-        "cinderace",
-        "darmanitangalar",
-        "dialga",
-        "dracovish",
-        "eternatus",
-        "genesect",
-        "giratina",
-        "giratinaorigin",
-        "groudon",
-        "hooh",
-        "kyogre",
-        "kyurem",
-        "kyuremblack",
-        "kyuremwhite",
-        "landorus",
-        "lugia",
-        "lunala",
-        "magearna",
-        "marshadow",
-        "mewtwo",
-        "naganadel",
-        "necrozmadawnwings",
-        "necrozmaduskmane",
-        "palkia",
-        "pheromosa",
-        "rayquaza",
-        "reshiram",
-        "solgaleo",
-        "spectrier",
-        "urshifu",
-        "xerneas",
-        "yveltal",
-        "zamazenta",
-        "zamazentacrowned",
-        "zekrom",
-        "zygarde",
-    ],
-    "uubl": [
-        "alakazam",
-        "arctozolt",
-        "blaziken",
-        "dracozolt",
-        "gengar",
-        "hawlucha",
-        "kommoo",
-        "latias",
-        "latios",
-        "mienshao",
-        "moltresgalar",
-        "terrakion",
-        "thundurus",
-    ],
-    "uu": [
-        "barraskewda",
-        "bisharp",
-        "blacephalon",
-        "blissey",
-        "buzzwole",
-        "clefable",
-        "corviknight",
-        "dragapult",
-        "dragonite",
-        "ferrothorn",
-        "garchomp",
-        "heatran",
-        "kartana",
-        "landorustherian",
-        "magnezone",
-        "mandibuzz",
-        "melmetal",
-        "mew",
-        "ninetalesalola",
-        "pelipper",
-        "regieleki",
-        "rillaboom",
-        "slowbro",
-        "slowkinggalar",
-        "tapufini",
-        "tapukoko",
-        "tapulele",
-        "tornadustherian",
-        "toxapex",
-        "tyranitar",
-        "urshifurapidstrike",
-        "victini",
-        "volcanion",
-        "volcarona",
-        "weavile",
-        "zapdos",
-        "zapdosgalar",
-        "zeraora",
-    ],
-}
