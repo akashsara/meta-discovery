@@ -210,7 +210,7 @@ if __name__ == "__main__":
     end_time = time.time()
     print(f"Simulation Time Taken: {end_time - start_time:.4f}")
 
-    meta_discovery_database.save("meta_discovery_database.joblib")
+    meta_discovery_database.save(meta_discovery_db_path)
 
     # Meta Discovery
     print("Fin.")
