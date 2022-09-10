@@ -66,12 +66,14 @@ if __name__ == "__main__":
         "n_actions": 22,
         "n_obs": 10,
     }
+    player1_config = PlayerConfiguration("Battle_Agent_1", None)
     player2_model_class = simple_models.SimpleActorCriticModel
     player2_model_path = "outputs/Simple_PPO_SelfPlay_v2.0/model_2047756.pt"
     player2_model_kwargs = {
         "n_actions": 22,
         "n_obs": 10,
     }
+    player2_config = PlayerConfiguration("Battle_Agent_2", None)
 
     # Use random seeds
     random.seed(random_seed)
@@ -133,7 +135,7 @@ if __name__ == "__main__":
         model=player1_model,
         device=device,
         start_timer_on_battle_start=True,
-        player_configuration=PlayerConfiguration("Battle_Agent_1", None),
+        player_configuration=player1_config,
         **player1_kwargs,
     )
 
@@ -143,7 +145,7 @@ if __name__ == "__main__":
         model=player2_model,
         device=device,
         start_timer_on_battle_start=True,
-        player_configuration=PlayerConfiguration("Battle_Agent_2", None),
+        player_configuration=player2_config,
         **player2_kwargs,
     )
 
