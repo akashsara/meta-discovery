@@ -5,7 +5,6 @@ import sys
 sys.path.append("./")
 from common_utils import *
 
-tier_list_location = "meta_discovery/data/tier_data.joblib"
 tier_mapper = {
     "anythinggoes": "AG",
     "ubers": "Uber",
@@ -168,10 +167,10 @@ def legality_checker(moveset_database, tier, ban_list):
     return moveset_database, ban_list
 
 
-def get_ban_list(current_tier):
-    if not os.path.exists(tier_list_location):
+def get_ban_list(current_tier, tier_list_path):
+    if not os.path.exists(tier_list_path):
         raise Exception(
-            f"We couldn't find the tier list file at {tier_list_location}. Please run meta_discovery/scripts/download_tiers.py"
+            f"We couldn't find the tier list file at {tier_list_path}. Please run meta_discovery/scripts/download_tiers.py"
         )
 
     current_tier = tier_mapper[current_tier]
@@ -184,7 +183,7 @@ def get_ban_list(current_tier):
     print(banned_tiers)
 
     ban_list = []
-    tier_list = joblib.load(tier_list_location)
+    tier_list = joblib.load(tier_list_path)
     for pokemon, information in tier_list.items():
         if "tier" not in information:
             continue

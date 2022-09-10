@@ -11,6 +11,7 @@ from meta_discovery import MetaDiscoveryDatabase
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
     meta_discovery_db_path = "meta_discovery/data/meta_discovery_database.joblib"
+    tier_list_path = "meta_discovery/data/tier_data.joblib"
     # Used to enforce species clause
     pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
     top_n = 25  # No. Pokemon to consider
@@ -25,7 +26,7 @@ if __name__ == "__main__":
     current_tier = metagame.split("gen8")[1]
     print("---" * 40)
     print(f"Tier Selected: {current_tier}")
-    ban_list = utils.get_ban_list(current_tier)
+    ban_list = utils.get_ban_list(current_tier, tier_list_path)
     print("---" * 30)
     print("Ban List in Effect:")
     print(ban_list)
