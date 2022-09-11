@@ -363,12 +363,12 @@ class GeneralAPISimpleAgent(Player):
             return self.choose_random_move(battle)
 
     def get_action(self, state):
-        if self.is_actor_critic:
-            with torch.no_grad():
-                predictions, _ = self.model(state.to(self.device))
-        else:
-            with torch.no_grad():
-                predictions = self.model(state.to(self.device))
+        state = state.to(self.device)
+        with torch.no_grad():
+            if self.is_actor_critic:
+                predictions, _ = self.model(state)
+            else:
+                predictions = self.model(state)
         return predictions.cpu()
 
     def choose_move(self, battle):

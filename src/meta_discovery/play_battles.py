@@ -33,7 +33,7 @@ def setup_and_load_model(model, model_kwargs, model_path):
     checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
-    return model
+    return model.to(device)
 
 
 if __name__ == "__main__":
