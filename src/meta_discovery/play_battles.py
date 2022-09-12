@@ -136,6 +136,7 @@ if __name__ == "__main__":
         device=device,
         start_timer_on_battle_start=True,
         player_configuration=player1_config,
+        server_configuration=server_config,
         **player1_kwargs,
     )
 
@@ -146,6 +147,7 @@ if __name__ == "__main__":
         device=device,
         start_timer_on_battle_start=True,
         player_configuration=player2_config,
+        server_configuration=server_config,
         **player2_kwargs,
     )
 
