@@ -212,10 +212,10 @@ if __name__ == "__main__":
             player1_all_losses + player2_all_losses,
             team_generation_interval,
         )
+        # Save DB
+        meta_discovery_database.save(meta_discovery_db_path)
     end_time = time.time()
     print(f"Simulation Time Taken: {end_time - start_time:.4f}")
-
-    meta_discovery_database.save(meta_discovery_db_path)
 
     # Meta Discovery
     print("Fin.")
