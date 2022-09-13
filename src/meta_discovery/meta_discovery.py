@@ -152,6 +152,10 @@ class TeamBuilder(Teambuilder):
             if np.random.random() > self.epsilon.calculate_epsilon(database.num_battles):
                 # Sample based on winrate
                 probabilities = database.winrates.copy()
+                # Adjust probabilities so that stronger Pokemon are 
+                # more likely to be picked
+                # We use 6 simply because there are 6 Pokemon in a team
+                probabilities = probabilities ** 6
             # There is an epsilon chance of picking low-usage Pokemon
             else:
                 # Sample based on 1 - pickrate
