@@ -58,6 +58,7 @@ if __name__ == "__main__":
     server_port = 8000
     # Choose metagame to play in
     metagame = "gen8ou"
+    banlist_tier = "ou"
     # Number of battles to run simultaneously
     max_concurrent_battles = 25
     # Set random seed for reproducible results
@@ -90,10 +91,9 @@ if __name__ == "__main__":
     _ = torch.manual_seed(random_seed)
 
     # Setup banlist
-    current_tier = metagame.split("gen8")[1]
     print("---" * 40)
-    print(f"Tier Selected: {current_tier}")
-    ban_list = utils.get_ban_list(current_tier, tier_list_path)
+    print(f"Tier Selected: {banlist_tier}")
+    ban_list = utils.get_ban_list(banlist_tier, tier_list_path)
     print("---" * 30)
     print("Ban List in Effect:")
     print(ban_list)
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     # Also remove Pokemon that have no movesets due to the above
     print("---" * 30)
     moveset_database, ban_list = utils.legality_checker(
-        moveset_database, current_tier, ban_list
+        moveset_database, banlist_tier, ban_list
     )
     # Setup meta discovery database & load existing one if possible
     print("---" * 30)
