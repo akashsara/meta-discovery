@@ -14,6 +14,7 @@ from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from models import full_state_models, simple_models
 from poke_env.player.random_player import RandomPlayer
+from poke_env.player import SimpleHeuristicsPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
 import utils
@@ -38,7 +39,7 @@ def setup_and_load_model(model, model_kwargs, model_path):
 
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
-    meta_discovery_db_path = "meta_discovery/data/meta_discovery_database.joblib"
+    meta_discovery_db_path = "meta_discovery/data/test.joblib"
     tier_list_path = "meta_discovery/data/tier_data.joblib"
     # Used to enforce species clause
     pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
@@ -50,30 +51,38 @@ if __name__ == "__main__":
     num_teams_to_generate = 2500
     # Exploration Factor - Epsilon
     # Prob. of using inverse pickrate over winrate
-    epsilon_min = 0.1
+    epsilon_min = 0.001
     epsilon_max = 1.0
     epsilon_decay = 20000
     # Set local port that Showdown is running on
     server_port = 8000
     # Choose metagame to play in
-    metagame = "gen8ubers"
+    metagame = "gen8ou"
+    # Number of battles to run simultaneously
+    max_concurrent_battles = 25
     # Set random seed for reproducible results
     random_seed = 42
+
     # Setup player information
+    player1_class = SimpleHeuristicsPlayer  # simple_agent.GeneralAPISimpleAgent
+    player1_config = PlayerConfiguration(f"{server_port}_BattleAgent1", None)
+    # This is used only if it's a model-based agent
     player1_model_class = simple_models.SimpleActorCriticModel
     player1_model_path = "outputs/Simple_PPO_Base_v2.1/model_1024000.pt"
     player1_model_kwargs = {
         "n_actions": 22,
         "n_obs": 10,
     }
-    player1_config = PlayerConfiguration("Battle_Agent_1", None)
+
+    player2_class = SimpleHeuristicsPlayer  # simple_agent.GeneralAPISimpleAgent
+    player2_config = PlayerConfiguration(f"{server_port}_BattleAgent2", None)
+    # This is used only if it's a model-based agent
     player2_model_class = simple_models.SimpleActorCriticModel
-    player2_model_path = "outputs/Simple_PPO_SelfPlay_v2.0/model_2047756.pt"
+    player2_model_path = "outputs/Simple_PPO_Base_v2.1/model_1024000.pt"
     player2_model_kwargs = {
         "n_actions": 22,
         "n_obs": 10,
     }
-    player2_config = PlayerConfiguration("Battle_Agent_2", None)
 
     # Use random seeds
     random.seed(random_seed)
@@ -113,44 +122,43 @@ if __name__ == "__main__":
         exploration_control, moveset_database, all_pokemon, pokedex_json_path, ban_list
     )
 
-    # Load trained models to use for each agent
-    player1_model = setup_and_load_model(
-        player1_model_class, player1_model_kwargs, player1_model_path
-    )
-    player2_model = setup_and_load_model(
-        player2_model_class, player2_model_kwargs, player2_model_path
-    )
+    # Setup kwargs & load trained models to use for each agent if necessary
+    player1_kwargs = {}
+    player2_kwargs = {}
+    if "agent" in str(player1_class):
+        player1_kwargs["model"] = setup_and_load_model(
+            player1_model_class, player1_model_kwargs, player1_model_path
+        )
+        player1_kwargs["device"] = device
+    if "agent" in str(player2_class):
+        player2_kwargs["model"] = setup_and_load_model(
+            player2_model_class, player2_model_kwargs, player2_model_path
+        )
+        player2_kwargs["device"] = device
 
     # Setup server configuration
     # Maintain servers on different ports to avoid Compute Canada errors
     server_config = utils.generate_server_configuration(server_port)
 
     # Create our battle agents
-    player1_kwargs = {}
-    player2_kwargs = {}
-
-    player1 = simple_agent.GeneralAPISimpleAgent(
+    player1 = player1_class(
         battle_format=metagame,
-        max_concurrent_battles=25,
-        model=player1_model,
-        device=device,
-        start_timer_on_battle_start=True,
+        max_concurrent_battles=max_concurrent_battles,
         player_configuration=player1_config,
         server_configuration=server_config,
+        start_timer_on_battle_start=True,
+        **player1_kwargs,
+    )
+    player2 = player2_class(
+        battle_format=metagame,
+        max_concurrent_battles=max_concurrent_battles,
+        player_configuration=player2_config,
+        server_configuration=server_config,
+        start_timer_on_battle_start=True,
         **player1_kwargs,
     )
 
-    player2 = simple_agent.GeneralAPISimpleAgent(
-        battle_format=metagame,
-        max_concurrent_battles=25,
-        model=player2_model,
-        device=device,
-        start_timer_on_battle_start=True,
-        player_configuration=player2_config,
-        server_configuration=server_config,
-        **player2_kwargs,
-    )
-
+    # Meta Discovery Loop Starts Here
     print("---" * 30)
     start_time = time.time()
     for i in range(num_battles_to_simulate // team_generation_interval):
