@@ -4,6 +4,7 @@ import sys
 
 sys.path.append("./")
 from common_utils import *
+from poke_env.data import to_id_str
 
 tier_mapper = {
     "anythinggoes": "AG",
@@ -57,99 +58,60 @@ all_tiers = [
 ]
 
 
-def legality_checker(moveset_database, tier, ban_list):
+def legality_checker(moveset_database, tier, ban_list, exclusions=[]):
     """
     Based off: https://www.smogon.com/dex/ss/formats/{tier}/
     Where {tier} = ubers, ou, uu
+
+    exclusions is a variable that we introduce for our experiments.
+    We simply use it to exclude certain rules.
     """
     print("Checking Legality of Movesets")
     to_delete = []
+    exclusions = [to_id_str(exclusion) for exclusion in exclusions]
+
+    # Illegal Combinations (movename, legal_tiers, clause)
+    illegal = [
+        # Baton Pass is illegal in all competitive tiers
+        ("batonpass", ["anythinggoes"], "Baton Pass Clause"),
+        # Double Team & Minimize = Evasion Clause
+        # Banned in all competitive tiers
+        ("doubleteam", ["anythingoes"], "Evasion Clause"),
+        ("minimize", ["anythingoes"], "Evasion Clause"),
+        # Fissure, Guillotine, Horn Drill, Sheer COld = OHKO Clause
+        # Banned in all competitive tiers
+        ("fissure", ["anythingoes"], "OHKO Clause"),
+        ("guillotine", ["anythingoes"], "OHKO Clause"),
+        ("horndrill", ["anythingoes"], "OHKO Clause"),
+        ("sheercold", ["anythingoes"], "OHKO Clause"),
+        # Shadow Tag is banned in all competitive tiers
+        ("shadowtag", ["anythingoes"], "Shadow Tag Clause"),
+        # Moody Clause - banned below Ubers
+        ("moody", ["anythingoes", "ubers"], "Moody Clause"),
+        # Arena Trap is banned below Ubers
+        ("arenatrap", ["anythingoes", "ubers"], "Arena Trap Clause"),
+        # Power Construct is banned below Ubers
+        ("powerconstruct", ["anythingoes", "ubers"], "Power Construct Clause"),
+        # Light Clay is banned below OU
+        ("lightclay", ["anythingoes", "ubers", "ou"], "Light Clay Clause"),
+        # King's Rock is banned below OU
+        ("kingsrock", ["anythingoes", "ubers", "out"], "King's Rock Clause"),
+    ]
+
     for pokemon, movesets in moveset_database.items():
         for moveset_name, moveset in movesets.items():
-            # Baton Pass is illegal in all tiers
-            if (
-                "Baton Pass" in moveset
-                or "baton pass" in moveset
-                or "batonpass" in moveset
-            ):
-                print(f"BATON PASS CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Double Team & Minimize = Evasion Clause = Banned in all tiers
-            elif (
-                "Double Team" in moveset
-                or "double team" in moveset
-                or "doubleteam" in moveset
-            ):
-                print(f"EVASION CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            elif "Minimize" in moveset or "minimize" in moveset:
-                print(f"EVASION CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Fissure, Guillotine, Horn Drill, Sheer COld = OHKO Clause
-            # Banned in all tiers
-            elif "Fissure" in moveset or "fissure" in moveset:
-                print(f"OHKO CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            elif "Guillotine" in moveset or "guillotine" in moveset:
-                print(f"OHKO CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            elif (
-                "Horn Drill" in moveset
-                or "horn drill" in moveset
-                or "horndrill" in moveset
-            ):
-                print(f"OHKO CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            elif "Sheer Cold" in moveset or "sheer cold" in moveset:
-                print(f"OHKO CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Moody Clause - banned below Ubers
-            elif tier != "ubers" and ("Moody" in moveset or "moody" in moveset):
-                print(f"MOODY CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Arena Trap is banned below Ubers
-            elif tier != "ubers" and (
-                "Arena Trap" in moveset
-                or "arena trap" in moveset
-                or "arenatrap" in moveset
-            ):
-                print(f"ARENA TRAP CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Shadow Tag is banned in all competitive tiers
-            elif (
-                "Shadow Tag" in moveset
-                or "shadow tag" in moveset
-                or "shadowtag" in moveset
-            ):
-                print(f"SHADOW TAG CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Power Construct is banned below Ubers
-            elif tier != "ubers" and (
-                "Power Construct" in moveset
-                or "power construct" in moveset
-                or "powerconstruct" in moveset
-            ):
-                print(f"POWER CONSTRUCT CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # Light Clay is banned below OU
-            elif tier not in ["ubers", "ou"] and (
-                "Light Clay" in moveset
-                or "light clay" in moveset
-                or "lightclay" in moveset
-            ):
-                print(f"LIGHT CLAY CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
-            # King's Rock is banned below OU
-            elif tier not in ["ubers", "ou"] and (
-                "King's Rock" in moveset
-                or "Kings Rock" in moveset
-                or "king's rock" in moveset
-                or "kings rock" in moveset
-                or "kingsrock" in moveset
-                or "king'srock" in moveset
-            ):
-                print(f"KING'S ROCK CLAUSE: {pokemon} - {moveset_name}")
-                to_delete.append((pokemon, moveset_name))
+            for (name, legal_tiers, clause) in illegal:
+                moveset = to_id_str(moveset)
+                if name in moveset and tier not in legal_tiers:
+                    # Exclusion - If we want to ignore a banned entity
+                    if any([exclusion in moveset for exclusion in exclusions]):
+                        print(f"Exclusion: {pokemon} - {moveset_name}")
+                        continue
+                    # Ban entity - queue for deletion
+                    else:
+                        print(f"{clause}: {pokemon} - {moveset_name}")
+                        to_delete.append((pokemon, moveset_name))
+                        break
 
     print("Deleting Illegal Movesets")
     for (pokemon, moveset) in to_delete:
@@ -167,7 +129,7 @@ def legality_checker(moveset_database, tier, ban_list):
     return moveset_database, ban_list
 
 
-def get_ban_list(current_tier, tier_list_path):
+def get_ban_list(current_tier, tier_list_path, exclusions=[]):
     if not os.path.exists(tier_list_path):
         raise Exception(
             f"We couldn't find the tier list file at {tier_list_path}. Please run meta_discovery/scripts/download_tiers.py"
@@ -183,9 +145,13 @@ def get_ban_list(current_tier, tier_list_path):
     print(banned_tiers)
 
     ban_list = []
+    exclusions = [to_id_str(exclusion) for exclusion in exclusions]
     tier_list = joblib.load(tier_list_path)
     for pokemon, information in tier_list.items():
         if "tier" not in information:
+            continue
+        if pokemon in exclusions:
+            print(f"Exclusion: {pokemon}")
             continue
         if information["tier"] in banned_tiers:
             ban_list.append(pokemon)

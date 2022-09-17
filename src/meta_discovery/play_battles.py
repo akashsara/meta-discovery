@@ -1,3 +1,23 @@
+"""
+
+On metagame vs playable_tier:
+    For our experiment's sake we have two separate variables. 
+    playable_tier determines the actual rules we're using. 
+    metagame determines the rules we use while battling. 
+    exclusions allows us to ignore certain rules.
+
+    For instance if we set playable_tier = "ou", metagame = "ubers"
+    and exclusions = ["power construct"]:
+        Then we will essentially be playing only OU.
+        Except Power Construct is unbanned.
+        Since Showdown won't let us do that legally in OU, we instead
+        play on ubers where Power Construct is naturally unbanned.
+
+    tl;dr:
+    playable_tier = tier you want to use
+    exclusions = things you want to unban
+    metagame = lowest tier where all exclusions are legal
+"""
 import asyncio
 import os
 import random
@@ -56,9 +76,10 @@ if __name__ == "__main__":
     epsilon_decay = 20000
     # Set local port that Showdown is running on
     server_port = 8000
-    # Choose metagame to play in
+    # Metagame / Ban List Selection [read comment at the top]
     metagame = "gen8ou"
-    banlist_tier = "ou"
+    playable_tier = "ou"
+    banlist_exclusions = []
     # Number of battles to run simultaneously
     max_concurrent_battles = 25
     # Set random seed for reproducible results
@@ -92,8 +113,8 @@ if __name__ == "__main__":
 
     # Setup banlist
     print("---" * 40)
-    print(f"Tier Selected: {banlist_tier}")
-    ban_list = utils.get_ban_list(banlist_tier, tier_list_path)
+    print(f"Tier Selected: {playable_tier}")
+    ban_list = utils.get_ban_list(playable_tier, tier_list_path, banlist_exclusions)
     print("---" * 30)
     print("Ban List in Effect:")
     print(ban_list)
@@ -104,8 +125,10 @@ if __name__ == "__main__":
     # Also remove Pokemon that have no movesets due to the above
     print("---" * 30)
     moveset_database, ban_list = utils.legality_checker(
-        moveset_database, banlist_tier, ban_list
+        moveset_database, playable_tier, ban_list, banlist_exclusions
     )
+    print("Final Banlist:")
+    print(ban_list)
     # Setup meta discovery database & load existing one if possible
     print("---" * 30)
     print("Setting up Meta Discovery database.")
