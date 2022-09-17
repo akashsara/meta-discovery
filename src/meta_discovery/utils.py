@@ -105,11 +105,11 @@ def legality_checker(moveset_database, tier, ban_list, exclusions=[]):
                 if name in moveset and tier not in legal_tiers:
                     # Exclusion - If we want to ignore a banned entity
                     if any([exclusion in moveset for exclusion in exclusions]):
-                        print(f"Exclusion: {pokemon} - {moveset_name}")
+                        print(f"Exclusion: {pokemon}/{moveset_name}/{clause}")
                         continue
                     # Ban entity - queue for deletion
                     else:
-                        print(f"{clause}: {pokemon} - {moveset_name}")
+                        print(f"{clause}: {pokemon}/{moveset_name}")
                         to_delete.append((pokemon, moveset_name))
                         break
 

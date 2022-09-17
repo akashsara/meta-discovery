@@ -16,6 +16,8 @@ On metagame vs playable_tier:
     tl;dr:
     playable_tier = tier you want to use
     exclusions = things you want to unban
+        pokemon = pokemon to unban
+        moveset = items/abilities/moves to unban
     metagame = lowest tier where all exclusions are legal
 """
 import asyncio
@@ -77,9 +79,10 @@ if __name__ == "__main__":
     # Set local port that Showdown is running on
     server_port = 8000
     # Metagame / Ban List Selection [read comment at the top]
-    metagame = "gen8ou"
+    metagame = "gen8ubers"
     playable_tier = "ou"
-    banlist_exclusions = []
+    banlist_pokemon_exclusions = ["zygarde"]
+    banlist_moveset_exclusions = []
     # Number of battles to run simultaneously
     max_concurrent_battles = 25
     # Set random seed for reproducible results
@@ -111,10 +114,14 @@ if __name__ == "__main__":
     np.random.seed(random_seed)
     _ = torch.manual_seed(random_seed)
 
+    # Special case for zygarde we need to unban a pokemon + ability
+    if "zygarde" in banlist_pokemon_exclusions:
+        banlist_moveset_exclusions.append("powerconstruct")
+
     # Setup banlist
     print("---" * 40)
     print(f"Tier Selected: {playable_tier}")
-    ban_list = utils.get_ban_list(playable_tier, tier_list_path, banlist_exclusions)
+    ban_list = utils.get_ban_list(playable_tier, tier_list_path, banlist_pokemon_exclusions)
     print("---" * 30)
     print("Ban List in Effect:")
     print(ban_list)
@@ -125,7 +132,7 @@ if __name__ == "__main__":
     # Also remove Pokemon that have no movesets due to the above
     print("---" * 30)
     moveset_database, ban_list = utils.legality_checker(
-        moveset_database, playable_tier, ban_list, banlist_exclusions
+        moveset_database, playable_tier, ban_list, banlist_moveset_exclusions
     )
     print("Final Banlist:")
     print(ban_list)
