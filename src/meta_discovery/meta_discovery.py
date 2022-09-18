@@ -72,6 +72,10 @@ class MetaDiscoveryDatabase:
             save_path,
         )
 
+    def calc_winrates_pickrates(self):
+        self.winrates = np.where(self.picks != 0, self.wins / self.picks, 0.0)
+        self.pickrates = self.picks / (2 * self.num_battles)
+
     def update_battle_statistics(self, wins, losses, num_battles):
         self.num_battles += num_battles
         wins = [self.form_mapper.get(win, win) for win in wins]
@@ -80,8 +84,7 @@ class MetaDiscoveryDatabase:
         pick_ids = [self.pokemon2key[pick] for pick in losses] + win_ids
         np.add.at(self.picks, pick_ids, 1)
         np.add.at(self.wins, win_ids, 1)
-        self.winrates = np.where(self.picks != 0, self.wins / self.picks, 0.0)
-        self.pickrates = self.picks / (2 * self.num_battles)
+        self.calc_winrates_pickrates()
 
 
 class Pokedex:
