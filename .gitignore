@@ -1,6 +1,8 @@
 env/
 torch_env/
 outputs/
+plots/
+usage_stats/
 .vscode/
 __pycache__/
 pokemon_showdown_accounts.py

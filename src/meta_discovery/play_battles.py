@@ -40,7 +40,8 @@ from poke_env.player import SimpleHeuristicsPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
 import utils
-from meta_discovery import MetaDiscoveryDatabase, TeamBuilder
+from meta_discovery import MetaDiscoveryDatabase
+from team_builder import TeamBuilder
 from policy import LinearDecayEpsilon
 
 gpu = torch.cuda.is_available()
