@@ -74,47 +74,58 @@ if __name__ == "__main__":
     database.load(meta_discovery_database_path)
     print(f"Load complete. {database.num_battles} Battles Complete")
 
+    statistic = database.winrates
+
     # Method 1 - Raw Winrates
-    data = database.winrates.copy()
+    data = statistic.copy()
     plot_and_save(data, "Prob(winrates)", output_dir)
 
     # Method 2 - 2*Winrates
-    data = database.winrates.copy() * 2
+    data = statistic.copy() * 2
     plot_and_save(data, "Prob(winrates_x2)", output_dir)
 
     # Method 3 - 10*Winrates
-    data = database.winrates.copy() * 10
+    data = statistic.copy() * 10
     plot_and_save(data, "Prob(winrates_x10)", output_dir)
 
     # Method 4 = Winrates^2
-    data = database.winrates.copy() ** 2
+    data = statistic.copy() ** 2
     plot_and_save(data, "Prob(winrates_^2)", output_dir)
 
     # Method 5 = Winrates^3
-    data = database.winrates.copy() ** 3
+    data = statistic.copy() ** 3
     plot_and_save(data, "Prob(winrates_^3)", output_dir)
 
     # Method 6 = Winrates^4
-    data = database.winrates.copy() ** 4
+    data = statistic.copy() ** 4
     plot_and_save(data, "Prob(winrates_^4)", output_dir)
 
     # Method 7 = Winrates^5
-    data = database.winrates.copy() ** 5
+    data = statistic.copy() ** 5
     plot_and_save(data, "Prob(winrates_^5)", output_dir)
 
     # Method 8 = Winrates^6
-    data = database.winrates.copy() ** 6
+    data = statistic.copy() ** 6
     plot_and_save(data, "Prob(winrates_^6)", output_dir)
 
     # Method 9 = Winrates-0.5
-    data = database.winrates.copy() - 0.5
+    data = statistic.copy() - 0.5
     plot_and_save(data, "Prob(winrates_-0.5)", output_dir)
 
     # Method 10 = sigmoid(Winrates)
-    data = sigmoid(database.winrates.copy())
+    data = sigmoid(statistic.copy())
     plot_and_save(data, "Prob(sigmoid(winrates))", output_dir)
 
     # Method 10 = sigmoid(Winrates-0.5)
-    data = sigmoid(database.winrates.copy() - 0.5)
+    data = sigmoid(statistic.copy() - 0.5)
     plot_and_save(data, "Prob(sigmoid(winrates_-0.5))", output_dir)
+
+    # Method 11 = Winrates^12
+    data = statistic.copy() ** 12
+    plot_and_save(data, "Prob(winrates_^12)", output_dir)
+
+    # Method 11 = Winrates^9
+    data = statistic.copy() ** 9
+    plot_and_save(data, "Prob(winrates_^9)", output_dir)
+
 
