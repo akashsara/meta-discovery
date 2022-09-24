@@ -29,15 +29,22 @@ async def battle_handler(player1, player2, num_challenges):
     )
 
 
-def training_function(player, model, model_kwargs):
+def training_function(player, opponent, model, model_kwargs):
     # Fit (train) model as necessary.
     model.fit(player, **model_kwargs)
     player.done_training = True
     # Play out the remaining battles so both fit() functions complete
     # We use 99 to give the agent an invalid option so it's forced
     # to take a random legal action
+    while not opponent.done_training:
+        _, _, done, _ = player.step(99)
+        if done and not opponent.done_training:
+            _ = player.reset()
+            done = False
+    
+    # Forfeit any ongoing battles
     while player.current_battle and not player.current_battle.finished:
-        _ = player.step(99)
+        _ = player.step(-1)
 
 
 if __name__ == "__main__":
@@ -110,16 +117,19 @@ if __name__ == "__main__":
         battle_format="gen8randombattle",
         player_configuration=rand_player,
         server_configuration=server_config,
+        start_timer_on_battle_start=True
     )
     max_damage_agent = MaxDamagePlayer(
         battle_format="gen8randombattle",
         player_configuration=max_player,
         server_configuration=server_config,
+        start_timer_on_battle_start=True
     )
     smart_max_damage_agent = SmartMaxDamagePlayer(
         battle_format="gen8randombattle",
         player_configuration=smax_player,
         server_configuration=server_config,
+        start_timer_on_battle_start=True
     )
 
     # Setup player
@@ -128,16 +138,18 @@ if __name__ == "__main__":
         log_level=30,
         player_configuration=training_agent1,
         server_configuration=server_config,
-        opponent="placeholder",
+        opponent=None,
         start_challenging=False,
+        start_timer_on_battle_start=True
     )
     player2 = SimpleRLPlayer(
         battle_format="gen8randombattle",
         log_level=30,
         player_configuration=training_agent2,
         server_configuration=server_config,
-        opponent="placeholder",
+        opponent=None,
         start_challenging=False,
+        start_timer_on_battle_start=True
     )
     # Setup independent player for testing
     test_player = SimpleRLPlayer(
@@ -145,8 +157,9 @@ if __name__ == "__main__":
         log_level=30,
         player_configuration=test_agent,
         server_configuration=server_config,
-        opponent="placeholder",
+        opponent=None,
         start_challenging=False,
+        start_timer_on_battle_start=True
     )
 
     # Grab some values from the environment to setup our model
@@ -197,10 +210,10 @@ if __name__ == "__main__":
         # 1. Get event loop
         loop = asyncio.get_event_loop()
         # Make Two Threads; one per player and run model.fit()
-        t1 = Thread(target=lambda: training_function(player1, ppo, p1_env_kwargs))
+        t1 = Thread(target=lambda: training_function(player1, player2, ppo, p1_env_kwargs))
         t1.start()
 
-        t2 = Thread(target=lambda: training_function(player2, ppo, p2_env_kwargs))
+        t2 = Thread(target=lambda: training_function(player2, player1, ppo, p2_env_kwargs))
         t2.start()
         # On the network side, keep sending & accepting battles
         while not player1.done_training or not player2.done_training:
