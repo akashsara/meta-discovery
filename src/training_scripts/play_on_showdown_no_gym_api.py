@@ -9,6 +9,7 @@ import torch
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from poke_env.player.random_player import RandomPlayer
+from poke_env.player.baselines import SimpleHeuristicsPlayer
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.server_configuration import ShowdownServerConfiguration
 
@@ -16,13 +17,13 @@ from pokemon_showdown_accounts import id_dict
 
 
 # Choose Agent:
-#   Random Agent, Max Damage Agent, Smart Max Damage Agent
-AGENT = "Smart Max Damage Agent"
+#   Random Agent, Max Damage Agent, Smart Max Damage Agent, Heuristic Agent
+AGENT = "Heuristic Agent"
 # Choose Mode:
 #   LADDER = Play 100 Matches on Ladder
 #   CHALLENGE = Accept a single challenge from any user on Showdown
-MODE = "CHALLENGE"
-NUM_GAMES = 1
+MODE = "Challenge"
+NUM_GAMES = 100
 USERNAME = id_dict[AGENT]["username"]
 PASSWORD = id_dict[AGENT]["password"]
 
@@ -49,6 +50,12 @@ async def main():
     # SmartMaxDamagePlayer
     elif AGENT == "Smart Max Damage Agent":
         player = SmartMaxDamagePlayer(
+            player_configuration=PlayerConfiguration(USERNAME, PASSWORD),
+            server_configuration=ShowdownServerConfiguration,
+            start_timer_on_battle_start=True,
+        )
+    elif AGENT == "Heuristic Agent":
+        player = SimpleHeuristicsPlayer(
             player_configuration=PlayerConfiguration(USERNAME, PASSWORD),
             server_configuration=ShowdownServerConfiguration,
             start_timer_on_battle_start=True,
