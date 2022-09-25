@@ -57,6 +57,7 @@ def poke_env_validate_model(
         "vs_max": max_wins,
         "vs_smart_max": smax_wins,
     }
+    env_player.close(purge=False)
     return results
 
 
