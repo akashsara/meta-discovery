@@ -36,10 +36,10 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
 
         # We count how many pokemons have not fainted in each team
         remaining_mon_team = (
-            len([mon for mon in battle.team.values() if mon.fainted]) / 6
+            len([mon for mon in battle.team.values() if not mon.fainted]) / 6
         )
         remaining_mon_opponent = (
-            len([mon for mon in battle.opponent_team.values() if mon.fainted]) / 6
+            len([mon for mon in battle.opponent_team.values() if not mon.fainted]) / 6
         )
 
         self.mask = self.make_mask(battle)
