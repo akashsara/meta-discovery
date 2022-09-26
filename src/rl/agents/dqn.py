@@ -126,8 +126,10 @@ class DQNAgent:
                 current_episode_length += 1
 
             # Train model on one batch of data
-            if (self.iterations > self.warmup_steps) and (
-                self.iterations % self.train_interval == 0
+            if (
+                (self.iterations > self.warmup_steps)
+                and (self.iterations % self.train_interval == 0)
+                and do_training
             ):
                 loss = self.train()
 
