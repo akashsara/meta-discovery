@@ -122,3 +122,32 @@ def load_trackers_to_ppo_model(output_dir, ppo):
     ppo.total_losses = all_losses
     ppo.approx_kl_divs = all_approx_kl_divs
     ppo.time_taken_per_rollout = time_taken_per_rollout
+
+
+def load_trackers_to_dqn_model(output_dir, dqn):
+    # Load back all the trackers to draw the final plots
+    all_losses = []
+    all_rewards = []
+    all_episode_lengths = []
+    # Sort files by iteration for proper graphing
+    files_to_read = sorted(
+        [
+            int(file.split(".pt")[0].split("_")[1])
+            for file in os.listdir(output_dir)
+            if "statistics_" in file
+        ]
+    )
+    for file in files_to_read:
+        x = torch.load(
+            os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device
+        )
+        all_losses.append(x.get("loss", []))
+        all_rewards.append(x.get("reward", []))
+        all_episode_lengths.append(x.get("episode_lengths", []))
+
+    all_losses = torch.cat(all_losses).flatten().cpu().numpy()
+    all_rewards = torch.cat(all_rewards).flatten().cpu().numpy()
+    all_episode_lengths = torch.cat(all_episode_lengths).flatten().cpu().numpy()
+    dqn.losses = all_losses
+    dqn.rewards = all_rewards
+    dqn.episode_lengths = all_episode_lengths

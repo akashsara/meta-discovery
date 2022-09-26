@@ -7,12 +7,14 @@ So small state vs random/max_damage/smart max_damage
 import json
 import os
 import sys
+import time
 
 sys.path.append("./")
 
 import numpy as np
 import torch
 import torch.nn as nn
+import training_utils as utils
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.simple_agent import SimpleRLPlayer
 from agents.smart_max_damage_agent import SmartMaxDamagePlayer
@@ -27,58 +29,48 @@ from rl.policy import (
 )
 
 
-# This is the function that will be used to train the dqn
-def model_training(player, model, nb_steps):
-    model.fit(player, num_training_steps=nb_steps)
-    player.complete_current_battle()
-
-
-def model_evaluation(player, model, nb_episodes):
-    # Reset battle statistics
-    player.reset_battles()
-    model.test(player, num_episodes=nb_episodes)
-
-    print(
-        "Evaluation: %d victories out of %d episodes"
-        % (player.n_won_battles, nb_episodes)
-    )
-
-
 if __name__ == "__main__":
     # Config - Versioning
-    training_opponent = "max"  # random, max, smart
+    training_opponent = "random"  # random, max, smart
     experiment_name = f"New_Simple_DQN_Base_v1"
+    server_port = 8000
     hash_name = str(hash(experiment_name))[2:12]
+    expt_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    print(f"Experiment: {experiment_name}\t Time: {expt_time}")
+    start_time = time.time()
 
     # Config - Model Save Directory
     model_dir = "models"
 
+    # Config - Training Hyperparameters
+    RANDOM_SEED = 42
+    NB_TRAINING_STEPS = 100000  # Total training steps
+    VALIDATE_EVERY = 20000  # Run intermediate evaluation every N steps
+    NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
+    NB_EVALUATION_EPISODES = 1000  # Final Evaluation
+
     # Config - Model Hyperparameters
     training_config = {
         "batch_size": 32,
-        "gamma": 0.9,
-        "tau": 1000,  # AKA Target Model Update
+        "gamma": 0.95,  # Discount Factor
+        "tau": 0.001,  # AKA Target Model Update
         "train_interval": 1,
         "log_interval": 1000,
         "warmup_steps": 1000,
     }
 
-    # Config - Training Hyperparameters
-    RANDOM_SEED = 42
-    NB_TRAINING_STEPS = 10000
-    VALIDATE_EVERY = 5000  # Run intermediate evaluation every N steps
-    NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
-    NB_EVALUATION_EPISODES = 1000  # Final Evaluation
-
     # Config = Model Setup
     MODEL = simple_models.SimpleModel
     MODEL_KWARGS = {}
-    memory_config = {"capacity": 10000}
+
+    # Config - Memory Setup
+    MEMORY = SequentialMemory
+    MEMORY_KWARGS = {"capacity": 10000}
 
     # Config - Policy Setup
     POLICY = LinearDecayEpsilonGreedyPolicy
     # POLICY = ExponentialDecayEpsilonGreedyPolicy
-    policy_config = {
+    POLICY_KWARGS = {
         "max_epsilon": 0.95,
         "min_epsilon": 0.05,
         # "epsilon_decay": 1000,
@@ -99,9 +91,14 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
     _ = torch.manual_seed(RANDOM_SEED)
 
+    # Setup server configuration
+    # Maintain servers on different ports to avoid Compute Canada errors
+    server_config = utils.generate_server_configuration(server_port)
+
     # Setup agent usernames for connecting to local showdown
     # This lets us train multiple agents while connecting to the same server
     training_agent = PlayerConfiguration(hash_name + "_P1", None)
+    test_agent = PlayerConfiguration(hash_name + "_Test", None)
     rand_player = PlayerConfiguration(hash_name + "_Rand", None)
     max_player = PlayerConfiguration(hash_name + "_Max", None)
     smax_player = PlayerConfiguration(hash_name + "_SMax", None)
@@ -111,22 +108,21 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Setup player
-    env_player = SimpleRLPlayer(
-        battle_format="gen8randombattle",
-        player_configuration=training_agent,
-        log_level=30,
-    )
-
     # Setup opponents
     random_agent = RandomPlayer(
-        battle_format="gen8randombattle", player_configuration=rand_player
+        battle_format="gen8randombattle",
+        player_configuration=rand_player,
+        server_configuration=server_config,
     )
     max_damage_agent = MaxDamagePlayer(
-        battle_format="gen8randombattle", player_configuration=max_player
+        battle_format="gen8randombattle",
+        player_configuration=max_player,
+        server_configuration=server_config,
     )
     smart_max_damage_agent = SmartMaxDamagePlayer(
-        battle_format="gen8randombattle", player_configuration=smax_player
+        battle_format="gen8randombattle",
+        player_configuration=smax_player,
+        server_configuration=server_config,
     )
     if training_opponent == "random":
         training_opponent = random_agent
@@ -137,147 +133,113 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown training opponent.")
 
+    # Setup player
+    env_player = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=training_agent,
+        server_configuration=server_config,
+        opponent=training_opponent,
+        start_challenging=False,
+    )
+    # Setup independent player for testing
+    test_player = SimpleRLPlayer(
+        battle_format="gen8randombattle",
+        log_level=30,
+        player_configuration=test_agent,
+        server_configuration=server_config,
+        opponent=None,
+        start_challenging=False,
+    )
+
     # Grab some values from the environment to setup our model
-    n_actions = len(env_player.action_space)
+    n_actions = env_player.action_space.n
     MODEL_KWARGS["n_actions"] = n_actions
 
     # Setup memory
-    memory = SequentialMemory(**memory_config)
+    memory = MEMORY(**MEMORY_KWARGS)
 
     # Simple Epsilon Greedy Policy
-    policy = POLICY(**policy_config)
+    policy = POLICY(**POLICY_KWARGS)
+
+    # Setup loss function
+    loss = LOSS(**LOSS_KWARGS)
 
     # Defining our DQN
     dqn = DQNAgent(
         policy=policy,
         memory=memory,
+        loss_function=loss,
         model=MODEL,
         model_kwargs=MODEL_KWARGS,
         optimizer=OPTIMIZER,
         optimizer_kwargs=OPTIMIZER_KWARGS,
-        loss=LOSS,
-        loss_kwargs=LOSS_KWARGS,
         **training_config,
     )
 
     evaluation_results = {}
-    epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
-    for i in range(epochs):
-        # Train Model
-        env_player.play_against(
-            env_algorithm=model_training,
-            opponent=training_opponent,
-            env_algorithm_kwargs={"model": dqn, "nb_steps": VALIDATE_EVERY},
+    if NB_VALIDATION_EPISODES > 0:
+        evaluation_results = utils.poke_env_validate_model(
+            test_player,
+            dqn,
+            NB_VALIDATION_EPISODES,
+            random_agent,
+            max_damage_agent,
+            smart_max_damage_agent,
+            f"initial",
+            evaluation_results,
         )
+    num_epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
 
-        # Save Model
-        dqn.save(output_dir, reset_trackers=True, create_plots=False)
+    for i in range(num_epochs):
+        # Train Model
+        env_player.start_challenging()
+        dqn.fit(env_player, VALIDATE_EVERY, do_training=True)
+        # Shutdown training agent
+        env_player.close(purge=False)
 
         # Evaluate Model
-        # Works only if NB_VALIDATION_EPISODES is set
-        # And this isn't the last "epoch" [Since we do a full eval after this]
-        if NB_VALIDATION_EPISODES > 0 and i + 1 != epochs:
-            evaluation_results[f"validation_set_{i+1}"] = {
-                "n_battles": NB_VALIDATION_EPISODES,
-            }
-
-            print("Results against random player:")
-            env_player.play_against(
-                env_algorithm=model_evaluation,
-                opponent=random_agent,
-                env_algorithm_kwargs={
-                    "model": dqn,
-                    "nb_episodes": NB_VALIDATION_EPISODES,
-                },
+        if NB_VALIDATION_EPISODES > 0 and i + 1 != num_epochs:
+            # Save model
+            dqn.save(output_dir, reset_trackers=True, create_plots=False)
+            # Validation
+            evaluation_results = utils.poke_env_validate_model(
+                test_player,
+                dqn,
+                NB_VALIDATION_EPISODES,
+                random_agent,
+                max_damage_agent,
+                smart_max_damage_agent,
+                f"validation_{i+1}",
+                evaluation_results,
             )
-            evaluation_results[f"validation_set_{i+1}"][
-                "vs_random"
-            ] = env_player.n_won_battles
 
-            print("\nResults against max player:")
-            env_player.play_against(
-                env_algorithm=model_evaluation,
-                opponent=max_damage_agent,
-                env_algorithm_kwargs={
-                    "model": dqn,
-                    "nb_episodes": NB_VALIDATION_EPISODES,
-                },
-            )
-            evaluation_results[f"validation_set_{i+1}"][
-                "vs_max"
-            ] = env_player.n_won_battles
-
-            print("\nResults against smart max player:")
-            env_player.play_against(
-                env_algorithm=model_evaluation,
-                opponent=smart_max_damage_agent,
-                env_algorithm_kwargs={
-                    "model": dqn,
-                    "nb_episodes": NB_VALIDATION_EPISODES,
-                },
-            )
-            evaluation_results[f"validation_set_{i+1}"][
-                "vs_smax"
-            ] = env_player.n_won_battles
+    # Save final model
+    dqn.save(output_dir, reset_trackers=True, create_plots=False)
 
     # Evaluation
     if NB_EVALUATION_EPISODES > 0:
-        evaluation_results["final"] = {
-            "n_battles": NB_EVALUATION_EPISODES,
-        }
-
-        print("Results against random player:")
-        env_player.play_against(
-            env_algorithm=model_evaluation,
-            opponent=random_agent,
-            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
+        evaluation_results = utils.poke_env_validate_model(
+            test_player,
+            dqn,
+            NB_EVALUATION_EPISODES,
+            random_agent,
+            max_damage_agent,
+            smart_max_damage_agent,
+            f"final",
+            evaluation_results,
         )
-        evaluation_results["final"]["vs_random"] = env_player.n_won_battles
-
-        print("\nResults against max player:")
-        env_player.play_against(
-            env_algorithm=model_evaluation,
-            opponent=max_damage_agent,
-            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
-        )
-        evaluation_results["final"]["vs_max"] = env_player.n_won_battles
-
-        print("\nResults against smart max player:")
-        env_player.play_against(
-            env_algorithm=model_evaluation,
-            opponent=smart_max_damage_agent,
-            env_algorithm_kwargs={"model": dqn, "nb_episodes": NB_EVALUATION_EPISODES},
-        )
-        evaluation_results["final"]["vs_smax"] = env_player.n_won_battles
 
     with open(os.path.join(output_dir, "results.json"), "w") as fp:
         json.dump(evaluation_results, fp)
 
-    # Load back all the trackers to draw the final plots
-    all_losses = []
-    all_rewards = []
-    all_episode_lengths = []
-    # Sort files by iteration for proper graphing
-    files_to_read = sorted(
-        [
-            int(file.split(".pt")[0].split("_")[1])
-            for file in os.listdir(output_dir)
-            if "statistics_" in file
-        ]
+    utils.load_trackers_to_dqn_model(output_dir, dqn)
+    dqn.plot_and_save_metrics(
+        output_dir, is_cumulative=True, reset_trackers=True, create_plots=True
     )
-    for file in files_to_read:
-        x = torch.load(
-            os.path.join(output_dir, f"statistics_{file}.pt"), map_location=dqn.device
-        )
-        all_losses.append(x["loss"])
-        all_rewards.append(x["reward"])
-        all_episode_lengths.append(x["episode_lengths"])
-    all_losses = torch.cat(all_losses).flatten().cpu().numpy()
-    all_rewards = torch.cat(all_rewards).flatten().cpu().numpy()
-    all_episode_lengths = torch.cat(all_episode_lengths).flatten().cpu().numpy()
-    dqn.losses = all_losses
-    dqn.rewards = all_rewards
-    dqn.episode_lengths = all_episode_lengths
+    end_time = time.time()
+    print(f"Running Time: {end_time - start_time}")
+
     dqn.plot_and_save_metrics(
         output_dir, is_cumulative=True, reset_trackers=True, create_plots=True
     )

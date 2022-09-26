@@ -17,10 +17,9 @@ class DQNAgent:
         memory,
         model,
         optimizer,
-        loss,
+        loss_function,
         model_kwargs={},
         optimizer_kwargs={},
-        loss_kwargs={},
         batch_size=32,
         gamma=0.95,
         tau=1e-3,
@@ -61,7 +60,7 @@ class DQNAgent:
         self.optimizer = optimizer(self.policy_network.parameters(), **optimizer_kwargs)
 
         # Setup loss function
-        self.loss_function = loss(**loss_kwargs)
+        self.loss_function = loss_function
 
         # Move models to GPU if possible
         self.policy_network.to(self.device)
@@ -78,12 +77,13 @@ class DQNAgent:
         if load_dict_path:
             print("Loading Model")
             load_dict = torch.load(load_dict_path, map_location=self.device)
+            self.policy.iterations = load_dict["policy"]
             self.policy_network.load_state_dict(load_dict["model_state_dict"])
             self.target_network.load_state_dict(load_dict["model_state_dict"])
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
             print("Load successful.")
 
-    def fit(self, environment, num_training_steps):
+    def fit(self, environment, num_training_steps, do_training=True):
         state = environment.reset()
         self.policy_network.train()
         self.target_network.eval()
@@ -91,7 +91,7 @@ class DQNAgent:
         current_episode_length = 0
         for i in tqdm(range(num_training_steps)):
             # Make action mask
-            action_mask = environment.get_action_mask().to(self.device)
+            action_mask = environment.action_masks().to(self.device)
             # TODO: Remove this when the bug is fixed.
             skip_step = environment.skip_current_step()
             if skip_step:
@@ -246,7 +246,7 @@ class DQNAgent:
             state = environment.reset()
             episode_reward = 0
             while not done:
-                action_mask = environment.get_action_mask().to(self.device)
+                action_mask = environment.action_masks().to(self.device)
                 # Get q_values
                 with torch.no_grad():
                     q_values = self.policy_network(state.to(self.device))
@@ -312,6 +312,7 @@ class DQNAgent:
         )
         torch.save(
             {
+                "policy": self.policy.iterations,
                 "model_state_dict": self.policy_network.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
