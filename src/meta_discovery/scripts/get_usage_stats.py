@@ -1,12 +1,13 @@
 import pandas as pd
 import requests
 import time
-import numpy as np
 import os
 
 def get_usage_data(url):
     response = requests.get(url)
     response.raise_for_status()
+    num_battles = int(response.text.split("\n")[0].split(": ")[-1])
+    weights = float(response.text.split("\n")[1].split(": ")[-1])
     text = response.text.split("\n")[5:-2]
     data = []
     for item in text:
@@ -20,16 +21,18 @@ def get_usage_data(url):
             "raw_usage_percentage": info[4],
             "real_usage": info[5],
             "real_usage_percentage": info[6],
+            "total_battles": num_battles,
+            "weightage": weights
         }
         #info: [rank, pokemon, usage-%, raw-usage, raw-usage-%, real, real-usage-%]
         data.append(info)
     data = pd.DataFrame(data)
     return data
 
-year_list = ["2022"]
-month_list = ["01", "02", "03", "04", "05", "06", "07", "08"]
+year_list = ["2020", "2021"]
+month_list = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
 meta_list = ["gen8ou"]
-rating_list = ["0"]
+rating_list = ["0", "1695"]
 output_path = "usage_stats"
 
 if not os.path.exists(output_path):
