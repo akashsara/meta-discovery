@@ -26,12 +26,12 @@ def fix_stats(month, prev_month):
 
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
-    prior_month_data_path = "meta_discovery/data/standard_ou_kyurem/standard_ou_kyurem_preban.joblib.month3.joblib"
-    month1_data_path = "meta_discovery/data/standard_ou_kyurem/standard_ou_kyurem_postban.joblib.month1.joblib"
-    month2_data_path = "meta_discovery/data/standard_ou_kyurem/standard_ou_kyurem_postban.joblib.month2.joblib"
-    month3_data_path = "meta_discovery/data/standard_ou_kyurem/standard_ou_kyurem_postban.joblib.month3.joblib"
+    prior_month_data_path = ""
+    month1_data_path = "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.joblib.month1.joblib"
+    month2_data_path = "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.joblib.month2.joblib"
+    month3_data_path = "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.joblib.month3.joblib"
     output_file = (
-        "meta_discovery/data/standard_ou_kyurem/standard_ou_kyurem_postban.joblib"
+        "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.csv"
     )
 
     # Set random seed for reproducible results
@@ -75,19 +75,26 @@ if __name__ == "__main__":
         month1 = fix_stats(month1, prior_months)
 
     # Calculate 3 Month Average
-    pickrates = (month3.pickrates + month2.pickrates + month1.pickrates) / 3
-    picks = (month3.picks + month2.picks + month1.picks) // 3
-    wins = (month3.wins + month2.wins + month1.wins) // 3
-    winrates = (month3.winrates + month2.winrates + month1.winrates) / 3
-    num_battles = (month3.num_battles + month2.num_battles + month1.num_battles) // 3
+    sum_battles = month3.num_battles + month2.num_battles + month1.num_battles
+    num_battles = sum_battles // 3
+    sum_picks = month3.picks + month2.picks + month1.picks
+    picks = sum_picks // 3
+    pickrates = sum_picks / (2 * sum_battles)
 
-    data = {
-        "wins": wins,
-        "picks": picks,
-        "winrates": winrates,
-        "pickrates": pickrates,
-        "pokemon2key": month3.pokemon2key,
-        "key2pokemon": month3.key2pokemon,
-        "num_battles": num_battles,
-    }
-    joblib.dump(data, output_file)
+    # Store in dict
+    output = []
+    for key, pokemon in month3.key2pokemon.items():
+        if picks[key] == 0:
+            continue
+        output.append(
+            {
+                "pokemon": pokemon,
+                "num_battles": num_battles,
+                "picks": picks[key],
+                "pickrates": pickrates[key],
+            }
+        )
+
+    # Convert to csv, sort, and save.
+    df = pd.DataFrame(output).sort_values("pickrates", ascending=False)
+    df.to_csv(output_file)
