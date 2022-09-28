@@ -102,17 +102,21 @@ if __name__ == "__main__":
         battle_format="gen8randombattle",
         player_configuration=rand_player,
         server_configuration=server_config,
+        start_timer_on_battle_start=True
     )
     max_damage_agent = MaxDamagePlayer(
         battle_format="gen8randombattle",
         player_configuration=max_player,
         server_configuration=server_config,
+        start_timer_on_battle_start=True
     )
     smart_max_damage_agent = SmartMaxDamagePlayer(
         battle_format="gen8randombattle",
         player_configuration=smax_player,
         server_configuration=server_config,
+        start_timer_on_battle_start=True
     )
+
     if training_opponent == "random":
         training_opponent = random_agent
     elif training_opponent == "max":
@@ -131,6 +135,7 @@ if __name__ == "__main__":
         server_configuration=server_config,
         opponent=training_opponent,
         start_challenging=False,
+        start_timer_on_battle_start=True
     )
     # Setup independent player for testing
     config["create"] = False
@@ -142,6 +147,7 @@ if __name__ == "__main__":
         server_configuration=server_config,
         opponent="placeholder",
         start_challenging=False,
+        start_timer_on_battle_start=True
     )
 
     # Grab some values from the environment to setup our model
