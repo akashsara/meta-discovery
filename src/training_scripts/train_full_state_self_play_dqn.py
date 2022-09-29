@@ -16,7 +16,7 @@ import torch.nn as nn
 import training_utils as utils
 from agents.full_state_agent import FullStatePlayer
 from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
+from poke_env.player.baselines import SimpleHeuristicsPlayer
 from models import full_state_models
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
@@ -159,7 +159,7 @@ if __name__ == "__main__":
         server_configuration=server_config,
         start_timer_on_battle_start=True
     )
-    smart_max_damage_agent = SmartMaxDamagePlayer(
+    smart_max_damage_agent = SimpleHeuristicsPlayer(
         battle_format="gen8randombattle",
         player_configuration=smax_player,
         server_configuration=server_config,
