@@ -63,6 +63,9 @@ if __name__ == "__main__":
     print(f"Experiment: {experiment_name}\t Time: {expt_time}")
     start_time = time.time()
 
+    # Choose whether to use the flattened model or the full model
+    use_flattened_model = False
+
     # Config - Model Save Directory
     model_dir = "models"
 
@@ -84,11 +87,15 @@ if __name__ == "__main__":
     }
 
     # Config = Model Setup
-    MODEL = full_state_models.BattleModel
-    MODEL_KWARGS = {
-        "pokemon_embedding_dim": 32,
-        "team_embedding_dim": 64,
-    }
+    if use_flattened_model:
+        MODEL = full_state_models.FlattenedBattleModel
+        MODEL_KWARGS = {}
+    else:
+        MODEL = full_state_models.BattleModel
+        MODEL_KWARGS = {
+            "pokemon_embedding_dim": 128,
+            "team_embedding_dim": 128,
+        }
 
     # Config - Memory Setup
     MEMORY = SequentialMemory
@@ -201,13 +208,14 @@ if __name__ == "__main__":
     )
 
     # Grab some values from the environment to setup our model
-    state = player1.create_empty_state_vector()
-    state = player1.state_to_machine_readable_state(state)
-    state_size = state.shape[0]
-    n_actions = player1.action_space.n
-    MODEL_KWARGS["n_actions"] = n_actions
-    MODEL_KWARGS["state_length_dict"] = player1.get_state_lengths()
-    MODEL_KWARGS["max_values_dict"] = player1.lookup["max_values"]
+    MODEL_KWARGS["n_actions"] = player1.action_space.n
+    if use_flattened_model:
+        sample = player1.create_empty_state_vector()
+        sample = player1.state_to_machine_readable_state(sample)
+        MODEL_KWARGS["n_obs"] = sample.shape[0]
+    else:
+        MODEL_KWARGS["state_length_dict"] = player1.get_state_lengths()
+        MODEL_KWARGS["max_values_dict"] = player1.lookup["max_values"]
 
     # Setup memory
     memory = MEMORY(**MEMORY_KWARGS)

@@ -40,6 +40,9 @@ if __name__ == "__main__":
     print(f"Experiment: {experiment_name}\t Time: {expt_time}")
     start_time = time.time()
 
+    # Choose whether to use the flattened model or the full model
+    use_flattened_model = False
+
     # Config - Model Save Directory
     model_dir = "models"
 
@@ -47,8 +50,8 @@ if __name__ == "__main__":
     RANDOM_SEED = 42
     NB_TRAINING_STEPS = 100000  # Total training steps
     VALIDATE_EVERY = 50000  # Run intermediate evaluation every N steps
-    NB_VALIDATION_EPISODES = 10  # Intermediate Evaluation
-    NB_EVALUATION_EPISODES = 100  # Final Evaluation
+    NB_VALIDATION_EPISODES = 100  # Intermediate Evaluation
+    NB_EVALUATION_EPISODES = 1000  # Final Evaluation
 
     # Config - Model Hyperparameters
     training_config = {
@@ -61,11 +64,15 @@ if __name__ == "__main__":
     }
 
     # Config = Model Setup
-    MODEL = full_state_models.BattleModel
-    MODEL_KWARGS = {
-        "pokemon_embedding_dim": 32,
-        "team_embedding_dim": 64,
-    }
+    if use_flattened_model:
+        MODEL = full_state_models.FlattenedBattleModel
+        MODEL_KWARGS = {}
+    else:
+        MODEL = full_state_models.BattleModel
+        MODEL_KWARGS = {
+            "pokemon_embedding_dim": 128,
+            "team_embedding_dim": 128,
+        }
 
     # Config - Memory Setup
     MEMORY = SequentialMemory
@@ -175,8 +182,13 @@ if __name__ == "__main__":
 
     # Grab some values from the environment to setup our model
     MODEL_KWARGS["n_actions"] = env_player.action_space.n
-    MODEL_KWARGS["state_length_dict"] = env_player.get_state_lengths()
-    MODEL_KWARGS["max_values_dict"] = env_player.lookup["max_values"]
+    if use_flattened_model:
+        sample = env_player.create_empty_state_vector()
+        sample = env_player.state_to_machine_readable_state(sample)
+        MODEL_KWARGS["n_obs"] = sample.shape[0]
+    else:
+        MODEL_KWARGS["state_length_dict"] = env_player.get_state_lengths()
+        MODEL_KWARGS["max_values_dict"] = env_player.lookup["max_values"]
 
     # Setup memory
     memory = MEMORY(**MEMORY_KWARGS)

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import sys
 
+
 class PokemonModel(nn.Module):
     def __init__(self, embedding_dim, max_values, pokemon_others_size):
         super(PokemonModel, self).__init__()
@@ -190,8 +191,10 @@ class BattleModel(nn.Module):
             team_embedding_dim, pokemon_embedding_dim, state_length_dict["team_state"]
         )
         # (batch_size, in_features) -> (batch_size, n_actions)
-        self.battle_state_model = nn.Linear(in_features=in_features, out_features=n_actions)
-        # (batch_size, n_actions, pokemon_embedding_dim + 1) -> 
+        self.battle_state_model = nn.Linear(
+            in_features=in_features, out_features=n_actions
+        )
+        # (batch_size, n_actions, pokemon_embedding_dim + 1) ->
         # (batch_size, n_actions, 1)
         self.model = nn.Linear(in_features=1 + pokemon_embedding_dim, out_features=1)
         # Save these variables for (potential) future use
@@ -230,10 +233,18 @@ class BattleModel(nn.Module):
         # Get embeddings for each individual pokemon
         player_pokemon = []
         opponent_pokemon = []
-        active_move1_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
-        active_move2_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
-        active_move3_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
-        active_move4_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move1_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
+        active_move2_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
+        active_move3_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
+        active_move4_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
         start = 0
         end = start + self.pokemon_state_length
         for i in range(6):
@@ -366,9 +377,11 @@ class ActorCriticBattleModel(nn.Module):
         # (batch_size, in_features) -> (batch_size, n_actions)
         self.policy_head = nn.Linear(in_features=in_features, out_features=n_actions)
         self.value_head = nn.Linear(in_features=in_features, out_features=1)
-        # (batch_size, n_actions, pokemon_embedding_dim + 1) -> 
+        # (batch_size, n_actions, pokemon_embedding_dim + 1) ->
         # (batch_size, n_actions, 1)
-        self.policy_emphasis_head = nn.Linear(in_features=1 + pokemon_embedding_dim, out_features=1)
+        self.policy_emphasis_head = nn.Linear(
+            in_features=1 + pokemon_embedding_dim, out_features=1
+        )
         # Save these variables for (potential) future use
         self.pokemon_embedding_dim = pokemon_embedding_dim
         self.team_embedding_dim = team_embedding_dim
@@ -405,10 +418,18 @@ class ActorCriticBattleModel(nn.Module):
         # Get embeddings for each individual pokemon
         player_pokemon = []
         opponent_pokemon = []
-        active_move1_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
-        active_move2_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
-        active_move3_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
-        active_move4_batch = torch.zeros(state.shape[0], self.pokemon_embedding_dim, device=state.device)
+        active_move1_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
+        active_move2_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
+        active_move3_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
+        active_move4_batch = torch.zeros(
+            state.shape[0], self.pokemon_embedding_dim, device=state.device
+        )
         start = 0
         end = start + self.pokemon_state_length
         for i in range(6):
@@ -487,4 +508,54 @@ class ActorCriticBattleModel(nn.Module):
         )
         policy = torch.cat([policy.unsqueeze(-1), emphasis_vector], dim=-1)
         policy = self.policy_emphasis_head(policy).squeeze(-1)
+        return policy, value
+
+
+class FlattenedBattleModel(nn.Module):
+    def __init__(
+        self,
+        n_obs,
+        n_actions,
+    ):
+        super(FlattenedBattleModel, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(n_obs, 512),
+            nn.ELU(inplace=True),
+            nn.Linear(512, 256),
+            nn.ELU(inplace=True),
+            nn.Linear(256, 128),
+            nn.ELU(inplace=True),
+            nn.Linear(128, 64),
+            nn.ELU(inplace=True),
+            nn.Linear(64, n_actions),
+        )
+
+    def forward(self, state):
+        return self.model(state)
+
+
+class ActorCriticFlattenedBattleModel(nn.Module):
+    def __init__(
+        self,
+        n_obs,
+        n_actions,
+    ):
+        super(ActorCriticFlattenedBattleModel, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(n_obs, 512),
+            nn.ELU(inplace=True),
+            nn.Linear(512, 256),
+            nn.ELU(inplace=True),
+            nn.Linear(256, 128),
+            nn.ELU(inplace=True),
+            nn.Linear(128, 64),
+            nn.ELU(inplace=True),
+        )
+        self.policy_head = nn.Linear(64, n_actions)
+        self.value_head = nn.Linear(64, 1)
+
+    def forward(self, state):
+        features = self.model(state)
+        policy = self.policy_head(features)
+        value = self.value_head(features)
         return policy, value

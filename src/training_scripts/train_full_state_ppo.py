@@ -29,6 +29,9 @@ if __name__ == "__main__":
     print(f"Experiment: {experiment_name}\t Time: {expt_time}")
     start_time = time.time()
 
+    # Choose whether to use the flattened model or the full model
+    use_flattened_model = False
+
     # Config - Model Save Directory
     model_dir = "models"
 
@@ -56,11 +59,15 @@ if __name__ == "__main__":
     }
 
     # Config = Model Setup
-    MODEL = full_state_models.ActorCriticBattleModel
-    MODEL_KWARGS = {
-        "pokemon_embedding_dim": 128,
-        "team_embedding_dim": 128,
-    }
+    if use_flattened_model:
+        MODEL = full_state_models.ActorCriticFlattenedBattleModel
+        MODEL_KWARGS = {}
+    else:
+        MODEL = full_state_models.ActorCriticBattleModel
+        MODEL_KWARGS = {
+            "pokemon_embedding_dim": 128,
+            "team_embedding_dim": 128,
+        }
 
     # Config - Optimizer Setup
     OPTIMIZER = torch.optim.Adam
@@ -156,8 +163,11 @@ if __name__ == "__main__":
     state_size = state.shape[0]
     n_actions = env_player.action_space.n
     MODEL_KWARGS["n_actions"] = n_actions
-    MODEL_KWARGS["state_length_dict"] = env_player.get_state_lengths()
-    MODEL_KWARGS["max_values_dict"] = env_player.lookup["max_values"]
+    if use_flattened_model:
+        MODEL_KWARGS["n_obs"] = state_size
+    else:
+        MODEL_KWARGS["state_length_dict"] = env_player.get_state_lengths()
+        MODEL_KWARGS["max_values_dict"] = env_player.lookup["max_values"]
 
     # Defining our DQN
     ppo = PPOAgent(
