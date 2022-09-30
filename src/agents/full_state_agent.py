@@ -512,7 +512,7 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         pokemon_state_maxes = (
             [self.lookup["max_values"]["species"]]
             + [self.lookup["max_values"]["items"]]
-            + [self.lookup["max_values"]["abilities"]] * 4
+            + [self.lookup["max_values"]["abilities"]] * 5
             + [self.lookup["max_values"]["moves"]] * 4
             + [1] * self.lookup["max_values"]["types"]
             + [1] * self.lookup["max_values"]["effects"]
