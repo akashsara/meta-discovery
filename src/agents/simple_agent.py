@@ -16,7 +16,7 @@ from poke_env.player.battle_order import BattleOrder, ForfeitBattleOrder
 # It needs a state embedder and a reward computer, hence these two methods
 class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
     def __init__(self, model=None, *args, **kwargs):
-        super(Gen8EnvSinglePlayerFixed, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.model = model
 
     def embed_battle(self, battle):
@@ -138,15 +138,9 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
         return torch.tensor(mask).float()
 
 
-class SimpleRLPlayerTesting(SimpleRLPlayer):
-    def __init__(self, model, *args, **kwargs):
-        SimpleRLPlayer.__init__(self, *args, **kwargs)
-        self.model = model
-
-
 class GeneralAPISimpleAgent(Player):
     def __init__(self, model, device, *args, **kwargs):
-        Player.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.model = model
         self.device = device
         self.is_actor_critic = "ActorCritic" in str(model)

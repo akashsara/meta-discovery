@@ -32,17 +32,14 @@ import joblib
 import numpy as np
 import torch
 from agents import full_state_agent, simple_agent
-from agents.max_damage_agent import MaxDamagePlayer
-from agents.smart_max_damage_agent import SmartMaxDamagePlayer
 from models import full_state_models, simple_models
-from poke_env.player.random_player import RandomPlayer
 from poke_env.player import SimpleHeuristicsPlayer
 from poke_env.player_configuration import PlayerConfiguration
 
 import utils
 from meta_discovery import MetaDiscoveryDatabase
-from team_builder import TeamBuilder
 from policy import LinearDecayEpsilon
+from team_builder import TeamBuilder
 
 gpu = torch.cuda.is_available()
 device = torch.device("cuda" if gpu else "cpu")
@@ -60,60 +57,166 @@ def setup_and_load_model(model, model_kwargs, model_path):
     return model.to(device)
 
 
+def get_player_class(model_type):
+    if model_type == "simple":
+        return simple_agent.GeneralAPISimpleAgent
+    elif model_type == "heuristic":
+        return SimpleHeuristicsPlayer
+    else:
+        return full_state_agent.GeneralAPIFullStateAgent
+
+
+def make_model(
+    model_type,
+    model_kwargs,
+    model_path,
+    lookup_path=None,
+):
+    if model_type == "simple":
+        model_class = simple_models.SimpleActorCriticModel
+        model_kwargs["n_actions"] = 22
+        model_kwargs["n_obs"] = 10
+    elif model_type in ["full", "flatten"]:
+        # Create a temporary player to get sample inputs/outputs to build
+        # the model with
+        temp = full_state_agent.FullStatePlayer(
+            config={"create": False, "lookup_filename": lookup_path},
+            opponent=None
+        )
+        state = temp.create_empty_state_vector()
+        state = temp.state_to_machine_readable_state(state)
+        state_length_dict = temp.get_state_lengths()
+        max_values_dict = temp.lookup["max_values"]
+        n_actions = temp.action_space.n
+        temp.close(purge=True)
+
+        if model_type == "flatten":
+            model_kwargs["n_actions"] = n_actions
+            model_kwargs["n_obs"] = state.shape[0]
+            model_class = full_state_models.ActorCriticFlattenedBattleModel
+        else:
+            model_kwargs["n_actions"] = n_actions
+            model_kwargs["state_length_dict"] = state_length_dict
+            model_kwargs["max_values_dict"] = max_values_dict
+            model_class = full_state_models.ActorCriticBattleModel
+    model = setup_and_load_model(model_class, model_kwargs, model_path)
+    return model
+
+
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
     meta_discovery_db_path = "meta_discovery/data/test.joblib"
     tier_list_path = "meta_discovery/data/tier_data.joblib"
     # Used to enforce species clause
     pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
+
     # Total num. battles to simulate
     num_battles_to_simulate = 20000
     # Num. battles between generating new teams
     team_generation_interval = 1000
     # Num. teams generated
     num_teams_to_generate = 2500
+
     # Exploration Factor - Epsilon
     # Prob. of using inverse pickrate over winrate
     epsilon_min = 0.001
     epsilon_max = 1.0
     epsilon_decay = 20000
+
     # Set local port that Showdown is running on
     server_port = 8000
+
     # Metagame / Ban List Selection [read comment at the top]
     metagame = "gen8ubers"
     playable_tier = "ou"
     banlist_pokemon_exclusions = ["zygarde"]
     banlist_moveset_exclusions = []
+
     # Number of battles to run simultaneously
     max_concurrent_battles = 25
     # Set random seed for reproducible results
     random_seed = 42
 
-    # Setup player information
-    player1_class = SimpleHeuristicsPlayer  # simple_agent.GeneralAPISimpleAgent
-    player1_config = PlayerConfiguration(f"{server_port}_BattleAgent1", None)
-    # This is used only if it's a model-based agent
-    player1_model_class = simple_models.SimpleActorCriticModel
-    player1_model_path = "outputs/Simple_PPO_Base_v2.1/model_1024000.pt"
-    player1_model_kwargs = {
-        "n_actions": 22,
-        "n_obs": 10,
-    }
+    # Setup player information - Determines what kind of agent we have
+    player1_model_type = "flatten"  # full, flatten, simple, heuristic
+    player2_model_type = "flatten"  # full, flatten, simple, heuristic
 
-    player2_class = SimpleHeuristicsPlayer  # simple_agent.GeneralAPISimpleAgent
+    player1_class = get_player_class(player1_model_type)
+    player2_class = get_player_class(player2_model_type)
+
+    player1_config = PlayerConfiguration(f"{server_port}_BattleAgent1", None)
     player2_config = PlayerConfiguration(f"{server_port}_BattleAgent2", None)
-    # This is used only if it's a model-based agent
-    player2_model_class = simple_models.SimpleActorCriticModel
-    player2_model_path = "outputs/Simple_PPO_Base_v2.1/model_1024000.pt"
-    player2_model_kwargs = {
-        "n_actions": 22,
-        "n_obs": 10,
-    }
+
+    player1_model_kwargs = {}
+    # FullState specific model kwargs
+    if player1_model_type == "full":
+        player1_model_kwargs["pokemon_embedding_dim"] = 128
+        player1_model_kwargs["team_embedding_dim"] = 128
+
+    player2_model_kwargs = {}
+    # FullState specific model kwargs
+    if player2_model_type == "full":
+        player2_model_kwargs["pokemon_embedding_dim"] = 128
+        player2_model_kwargs["team_embedding_dim"] = 128
+
+    player1_model_dir = "models/ppo_flatten_test/"
+    player1_model_name = "model_1024.pt"
+    player1_model_path = os.path.join(player1_model_dir, player1_model_name)
+    player1_lookup_path = None
+
+    player2_model_dir = "models/ppo_flatten_test/"
+    player2_model_name = "model_1024.pt"
+    player2_model_path = os.path.join(player2_model_dir, player2_model_name)
+    player2_lookup_path = None
+
+    # Setup player (battle agent) arguments
+    player1_kwargs = {}
+    player2_kwargs = {}
+
+    # Device is a kwarg only if this is a model-based agent
+    if player1_model_type != "heuristic":
+        player1_kwargs["device"] = device
+
+    if player2_model_type != "heuristic":
+        player2_kwargs["device"] = device
+
+    # FullState specific player kwargs
+    if player1_model_type in ["flatten", "full"]:
+        player1_lookup_path = os.path.join(
+            player1_model_dir, "player_lookup_dicts.joblib"
+        )
+        player1_kwargs["lookup_filename"] = player1_lookup_path
+
+    # FullState specific player kwargs
+    if player2_model_type in ["flatten", "full"]:
+        player2_lookup_path = os.path.join(
+            player2_model_dir, "player_lookup_dicts.joblib"
+        )
+        player2_kwargs["lookup_filename"] = player2_lookup_path
 
     # Use random seeds
     random.seed(random_seed)
     np.random.seed(random_seed)
     _ = torch.manual_seed(random_seed)
+
+    # Create models if not using a heuristic agent
+    if player1_model_type != "heuristic":
+        player1_model = make_model(
+            player1_model_type,
+            player1_model_kwargs,
+            player1_model_path,
+            player1_lookup_path,
+        )
+        player1_kwargs["model"] = player1_model
+
+    if player2_model_type != "heuristic":
+        player2_model = make_model(
+            player2_model_type,
+            player2_model_kwargs,
+            player2_model_path,
+            player2_lookup_path,
+        )
+        player2_kwargs["model"] = player2_model
 
     # Special case for zygarde we need to unban a pokemon + ability
     if "zygarde" in banlist_pokemon_exclusions:
@@ -122,7 +225,9 @@ if __name__ == "__main__":
     # Setup banlist
     print("---" * 40)
     print(f"Tier Selected: {playable_tier}")
-    ban_list = utils.get_ban_list(playable_tier, tier_list_path, banlist_pokemon_exclusions)
+    ban_list = utils.get_ban_list(
+        playable_tier, tier_list_path, banlist_pokemon_exclusions
+    )
     print("---" * 30)
     print("Ban List in Effect:")
     print(ban_list)
@@ -153,20 +258,6 @@ if __name__ == "__main__":
         exploration_control, moveset_database, all_pokemon, pokedex_json_path, ban_list
     )
 
-    # Setup kwargs & load trained models to use for each agent if necessary
-    player1_kwargs = {}
-    player2_kwargs = {}
-    if "agent" in str(player1_class):
-        player1_kwargs["model"] = setup_and_load_model(
-            player1_model_class, player1_model_kwargs, player1_model_path
-        )
-        player1_kwargs["device"] = device
-    if "agent" in str(player2_class):
-        player2_kwargs["model"] = setup_and_load_model(
-            player2_model_class, player2_model_kwargs, player2_model_path
-        )
-        player2_kwargs["device"] = device
-
     # Setup server configuration
     # Maintain servers on different ports to avoid Compute Canada errors
     server_config = utils.generate_server_configuration(server_port)
@@ -186,7 +277,7 @@ if __name__ == "__main__":
         player_configuration=player2_config,
         server_configuration=server_config,
         start_timer_on_battle_start=True,
-        **player1_kwargs,
+        **player2_kwargs,
     )
 
     # Meta Discovery Loop Starts Here
