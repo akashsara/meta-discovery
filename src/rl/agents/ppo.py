@@ -108,6 +108,7 @@ class PPOAgent:
             load_dict = torch.load(load_dict_path, map_location=self.device)
             self.model.load_state_dict(load_dict["model_state_dict"])
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
+            self.iterations = load_dict["iterations"]
             print("Load successful.")
 
     def fit(self, environment, total_steps, do_training=True):
@@ -441,6 +442,7 @@ class PPOAgent:
             {
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
+                "iterations": self.iterations
             },
             os.path.join(output_path, f"model_{self.iterations}.pt"),
         )
