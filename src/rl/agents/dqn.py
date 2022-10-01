@@ -83,13 +83,13 @@ class DQNAgent:
             self.optimizer.load_state_dict(load_dict["optimizer_state_dict"])
             print("Load successful.")
 
-    def fit(self, environment, num_training_steps, do_training=True):
+    def fit(self, environment, total_steps, do_training=True):
         state = environment.reset()
         self.policy_network.train()
         self.target_network.eval()
         loss = None
         current_episode_length = 0
-        for i in tqdm(range(num_training_steps)):
+        for i in tqdm(range(total_steps)):
             # Make action mask
             action_mask = environment.action_masks().to(self.device)
             # TODO: Remove this when the bug is fixed.
@@ -154,7 +154,7 @@ class DQNAgent:
             # Log output to console
             if self.iterations % self.log_interval == 0:
                 tqdm.write(
-                    f"[{i + 1}/{num_training_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(self.rewards):.4f}\tAverage Episode Length: {np.mean(self.episode_lengths):.2f}\tAverage Loss: {np.mean(self.losses):.4f}"
+                    f"[{i + 1}/{total_steps}] Iteration: {self.iterations}\tAverage Reward: {np.mean(self.rewards):.4f}\tAverage Episode Length: {np.mean(self.episode_lengths):.2f}\tAverage Loss: {np.mean(self.losses):.4f}"
                 )
 
     def train(self):

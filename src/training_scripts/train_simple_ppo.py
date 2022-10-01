@@ -11,6 +11,7 @@ sys.path.append("./")
 import numpy as np
 import torch
 import training_utils as utils
+import battle_handler
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.simple_agent import SimpleRLPlayer
 from poke_env.player.baselines import SimpleHeuristicsPlayer
@@ -157,63 +158,27 @@ if __name__ == "__main__":
         **training_config,
     )
 
-    if NB_VALIDATION_EPISODES > 0:
-        evaluation_results = utils.poke_env_validate_model(
-            test_player,
-            ppo,
-            NB_VALIDATION_EPISODES,
-            random_agent,
-            max_damage_agent,
-            smart_max_damage_agent,
-            f"initial",
-            evaluation_results,
-        )
-    num_epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
-    for i in range(num_epochs):
-        # Train Model
-        env_player.start_challenging()
-        ppo.fit(env_player, VALIDATE_EVERY, do_training=True)
-        # Shutdown training agent
-        env_player.close(purge=False)
+    # Train Model
+    battle_handler.run_normalplay(
+        rl_model=ppo,
+        env_player=env_player,
+        test_player=test_player,
+        random_agent=random_agent,
+        max_damage_agent=max_damage_agent,
+        smart_max_damage_agent=smart_max_damage_agent,
+        nb_training_steps=NB_TRAINING_STEPS,
+        validate_every=VALIDATE_EVERY,
+        nb_validation_episodes=NB_VALIDATION_EPISODES,
+        nb_evaluation_episodes=NB_EVALUATION_EPISODES,
+        evaluation_results=evaluation_results,
+        output_dir=output_dir,
+    )
 
-        # Evaluate Model
-        if NB_VALIDATION_EPISODES > 0 and i + 1 != num_epochs:
-            # Save model
-            ppo.save(output_dir, reset_trackers=True, create_plots=False)
-            # Validation
-            evaluation_results = utils.poke_env_validate_model(
-                test_player,
-                ppo,
-                NB_VALIDATION_EPISODES,
-                random_agent,
-                max_damage_agent,
-                smart_max_damage_agent,
-                f"validation_{i+1}",
-                evaluation_results,
-            )
-
-    # Save final model
-    ppo.save(output_dir, reset_trackers=True, create_plots=False)
-
-    # Evaluation
-    if NB_EVALUATION_EPISODES > 0:
-        evaluation_results = utils.poke_env_validate_model(
-            test_player,
-            ppo,
-            NB_EVALUATION_EPISODES,
-            random_agent,
-            max_damage_agent,
-            smart_max_damage_agent,
-            f"final",
-            evaluation_results,
-        )
-
-    with open(os.path.join(output_dir, "results.json"), "w") as fp:
-        json.dump(evaluation_results, fp)
-
+    # Load all statistics & make plots
     utils.load_trackers_to_ppo_model(output_dir, ppo)
     ppo.plot_and_save_metrics(
         output_dir, is_cumulative=True, reset_trackers=True, create_plots=True
     )
+
     end_time = time.time()
     print(f"Running Time: {end_time - start_time}")

@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 # https://github.com/hsahovic/poke-env/blob/master/examples/experimental-self-play.py
 
-import asyncio
 import json
 import os
 import sys
 import time
-from threading import Thread
 
 sys.path.append("./")
 
 import numpy as np
 import torch
 import training_utils as utils
+import battle_handler
 from agents.max_damage_agent import MaxDamagePlayer
 from agents.simple_agent import SimpleRLPlayer
 from poke_env.player.baselines import SimpleHeuristicsPlayer
@@ -20,31 +19,6 @@ from models import simple_models
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
 from rl.agents.ppo import PPOAgent
-
-
-async def battle_handler(player1, player2, num_challenges):
-    await asyncio.gather(
-        player1.agent.accept_challenges(player2.username, num_challenges),
-        player2.agent.send_challenges(player1.username, num_challenges),
-    )
-
-
-def training_function(player, opponent, model, model_kwargs):
-    # Fit (train) model as necessary.
-    model.fit(player, **model_kwargs)
-    player.done_training = True
-    # Play out the remaining battles so both fit() functions complete
-    # We use 99 to give the agent an invalid option so it's forced
-    # to take a random legal action
-    while not opponent.done_training:
-        _, _, done, _ = player.step(99)
-        if done and not opponent.done_training:
-            _ = player.reset()
-            done = False
-    
-    # Forfeit any ongoing battles
-    while player.current_battle and not player.current_battle.finished:
-        _ = player.step(-1)
 
 
 if __name__ == "__main__":
@@ -115,27 +89,35 @@ if __name__ == "__main__":
     else:
         with open(os.path.join(output_dir, "results.json"), "r") as fp:
             evaluation_results = json.load(fp)
-        iterations = max([int(file.split(".")[0].split("_")[-1]) for file in os.listdir(output_dir) if "model" in file])
-        training_config["load_dict_path"] = os.path.join(output_dir, f"model_{iterations}.pt")
+        iterations = max(
+            [
+                int(file.split(".")[0].split("_")[-1])
+                for file in os.listdir(output_dir)
+                if "model" in file
+            ]
+        )
+        training_config["load_dict_path"] = os.path.join(
+            output_dir, f"model_{iterations}.pt"
+        )
 
     # Setup opponents
     random_agent = RandomPlayer(
         battle_format="gen8randombattle",
         player_configuration=rand_player,
         server_configuration=server_config,
-        start_timer_on_battle_start=True
+        start_timer_on_battle_start=True,
     )
     max_damage_agent = MaxDamagePlayer(
         battle_format="gen8randombattle",
         player_configuration=max_player,
         server_configuration=server_config,
-        start_timer_on_battle_start=True
+        start_timer_on_battle_start=True,
     )
     smart_max_damage_agent = SimpleHeuristicsPlayer(
         battle_format="gen8randombattle",
         player_configuration=smax_player,
         server_configuration=server_config,
-        start_timer_on_battle_start=True
+        start_timer_on_battle_start=True,
     )
 
     # Setup player
@@ -146,7 +128,7 @@ if __name__ == "__main__":
         server_configuration=server_config,
         opponent=None,
         start_challenging=False,
-        start_timer_on_battle_start=True
+        start_timer_on_battle_start=True,
     )
     player2 = SimpleRLPlayer(
         battle_format="gen8randombattle",
@@ -155,7 +137,7 @@ if __name__ == "__main__":
         server_configuration=server_config,
         opponent=None,
         start_challenging=False,
-        start_timer_on_battle_start=True
+        start_timer_on_battle_start=True,
     )
     # Setup independent player for testing
     test_player = SimpleRLPlayer(
@@ -165,7 +147,7 @@ if __name__ == "__main__":
         server_configuration=server_config,
         opponent=None,
         start_challenging=False,
-        start_timer_on_battle_start=True
+        start_timer_on_battle_start=True,
     )
 
     # Grab some values from the environment to setup our model
@@ -185,88 +167,28 @@ if __name__ == "__main__":
         **training_config,
     )
 
-    if NB_VALIDATION_EPISODES > 0:
-        evaluation_results = utils.poke_env_validate_model(
-            test_player,
-            ppo,
-            NB_VALIDATION_EPISODES,
-            random_agent,
-            max_damage_agent,
-            smart_max_damage_agent,
-            f"initial",
-            evaluation_results,
-        )
+    # Train Model
+    battle_handler.run_selfplay(
+        rl_model=ppo,
+        player1=player1,
+        player2=player2,
+        test_player=test_player,
+        random_agent=random_agent,
+        max_damage_agent=max_damage_agent,
+        smart_max_damage_agent=smart_max_damage_agent,
+        nb_training_steps=NB_TRAINING_STEPS,
+        validate_every=VALIDATE_EVERY,
+        nb_validation_episodes=NB_VALIDATION_EPISODES,
+        nb_evaluation_episodes=NB_EVALUATION_EPISODES,
+        evaluation_results=evaluation_results,
+        output_dir=output_dir,
+    )
 
-    num_epochs = max(NB_TRAINING_STEPS // VALIDATE_EVERY, 1)
-    for i in range(num_epochs):
-        # Setup arguments to pass to the training function
-        p1_env_kwargs = {
-            "total_steps": VALIDATE_EVERY,
-            "do_training": True,
-        }
-        p2_env_kwargs = {
-            "total_steps": VALIDATE_EVERY,
-            "do_training": False,
-        }
-
-        # Self-Play bits
-        player1.done_training = False
-        player2.done_training = False
-        # 1. Get event loop
-        loop = asyncio.get_event_loop()
-        # Make Two Threads; one per player and run model.fit()
-        t1 = Thread(target=lambda: training_function(player1, player2, ppo, p1_env_kwargs))
-        t1.start()
-
-        t2 = Thread(target=lambda: training_function(player2, player1, ppo, p2_env_kwargs))
-        t2.start()
-        # On the network side, keep sending & accepting battles
-        while not player1.done_training or not player2.done_training:
-            loop.run_until_complete(battle_handler(player1, player2, 1))
-        # Wait for thread completion
-        t1.join()
-        t2.join()
-
-        player1.close(purge=False)
-        player2.close(purge=False)
-
-        # Evaluate Model
-        if NB_VALIDATION_EPISODES > 0 and i + 1 != num_epochs:
-            # Save model
-            ppo.save(output_dir, reset_trackers=True, create_plots=False)
-            # Validation
-            evaluation_results = utils.poke_env_validate_model(
-                test_player,
-                ppo,
-                NB_VALIDATION_EPISODES,
-                random_agent,
-                max_damage_agent,
-                smart_max_damage_agent,
-                f"validation_{i+1}",
-                evaluation_results,
-            )
-    # Save final model
-    ppo.save(output_dir, reset_trackers=True, create_plots=False)
-
-    # Evaluation
-    if NB_EVALUATION_EPISODES > 0:
-        evaluation_results = utils.poke_env_validate_model(
-            test_player,
-            ppo,
-            NB_EVALUATION_EPISODES,
-            random_agent,
-            max_damage_agent,
-            smart_max_damage_agent,
-            f"final",
-            evaluation_results,
-        )
-
-    with open(os.path.join(output_dir, "results.json"), "w") as fp:
-        json.dump(evaluation_results, fp)
-
+    # Load all statistics & make plots
     utils.load_trackers_to_ppo_model(output_dir, ppo)
     ppo.plot_and_save_metrics(
         output_dir, is_cumulative=True, reset_trackers=True, create_plots=True
     )
+
     end_time = time.time()
     print(f"Running Time: {end_time - start_time}")
