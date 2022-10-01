@@ -153,7 +153,7 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
         evaluation_results = {}
     else:
-        with open(os.path.join(output_dir, "results.json"), "w") as fp:
+        with open(os.path.join(output_dir, "results.json"), "r") as fp:
             evaluation_results = json.load(fp)
         iterations = max([int(file.split(".")[0].split("_")[-1]) for file in os.listdir(output_dir) if "model" in file])
         training_config["load_dict_path"] = os.path.join(output_dir, f"model_{iterations}.pt")
