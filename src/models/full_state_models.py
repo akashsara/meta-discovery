@@ -34,10 +34,10 @@ class PokemonModel(nn.Module):
 
     def forward(self, state, return_moveset=False):
         # First dimension is batch size
-        # First 10 vectors = things we need embeddings for
+        # First 11 vectors = things we need embeddings for
         # Rest is concatenated before passing through the dense layer
-        pokemon_state = state[:, :10].int()
-        pokemon_others_state = state[:, 10:]
+        pokemon_state = state[:, :11].int()
+        pokemon_others_state = state[:, 11:]
         # Define Inputs
         (
             pokemon_species,
@@ -46,11 +46,12 @@ class PokemonModel(nn.Module):
             pokemon_possible_ability1,
             pokemon_possible_ability2,
             pokemon_possible_ability3,
+            pokemon_possible_ability4,
             pokemon_move1,
             pokemon_move2,
             pokemon_move3,
             pokemon_move4,
-        ) = torch.chunk(pokemon_state, chunks=10, dim=-1)
+        ) = torch.chunk(pokemon_state, chunks=11, dim=-1)
 
         # Get Embeddings: (batch_size, embedding_dim)
         species_embedded = self.species_embedding(pokemon_species).squeeze(1)
@@ -61,12 +62,14 @@ class PokemonModel(nn.Module):
         possible_ability1_embedded = self.ability_embedding(pokemon_possible_ability1)
         possible_ability2_embedded = self.ability_embedding(pokemon_possible_ability2)
         possible_ability3_embedded = self.ability_embedding(pokemon_possible_ability3)
+        possible_ability4_embedded = self.ability_embedding(pokemon_possible_ability4)
         average_abilities_embedded = (
             torch.stack(
                 [
                     possible_ability1_embedded,
                     possible_ability2_embedded,
                     possible_ability3_embedded,
+                    possible_ability4_embedded,
                 ]
             )
             .mean(dim=0)

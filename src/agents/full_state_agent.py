@@ -501,7 +501,7 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         # level, health, protect_counter, status_counter, fainted, active
         # first_turn, must_recharge, preparing
         pokemon_state_mins = (
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             + [0] * self.lookup["max_values"]["types"]
             + [0] * self.lookup["max_values"]["effects"]
             + [0] * self.lookup["max_values"]["status"]
