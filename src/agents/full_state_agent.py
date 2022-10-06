@@ -621,6 +621,10 @@ class FullStatePlayer(Gen8EnvSinglePlayerFixed):
         # But also a generic catch-all for scenarios with no moves
         if all([x == -1e9 for x in mask]):
             self.skip_step = True
+        # Another buggy scenario
+        # https://github.com/hsahovic/poke-env/issues/320
+        elif battle.opponent_active_pokemon is None:
+            self.skip_step = True
 
         return torch.tensor(mask).float()
 
@@ -1060,6 +1064,10 @@ class GeneralAPIFullStateAgent(Player):
         # Ref: https://github.com/hsahovic/poke-env/issues/295
         # But also a generic catch-all for scenarios with no moves
         if all([x == -1e9 for x in mask]):
+            self.skip_step = True
+        # Another buggy scenario
+        # https://github.com/hsahovic/poke-env/issues/320
+        elif battle.opponent_active_pokemon is None:
             self.skip_step = True
 
         return torch.tensor(mask).float()
