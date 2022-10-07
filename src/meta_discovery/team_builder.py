@@ -5,6 +5,7 @@ from policy import Epsilon
 import numpy as np
 from meta_discovery import MetaDiscoveryDatabase
 
+
 class Pokedex:
     """
     Create a Pokedex to ensure species clause.
@@ -12,8 +13,12 @@ class Pokedex:
     Given a Pokemon we can find its pokedex number.
     We can then use this number to find all Pokemon that share the number.
     """
-    def __init__(self, path_to_pokedex_json: str):
-        pokedex = pd.read_json(path_to_pokedex_json).T
+
+    def __init__(self):
+        # Hard-Coding this as it should never change
+        pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
+        # Load Pokedex and setup maps
+        pokedex = pd.read_json(pokedex_json_path).T
         pokedex["num"] = pokedex["num"].astype(int)
         self.pokemon2id = pokedex["num"].to_dict()
         id2pokemon = {}
@@ -43,13 +48,12 @@ class TeamBuilder(Teambuilder):
         epsilon: Epsilon,
         moveset_database: dict,
         all_keys: list,
-        pokedex_json_path: str,
         ban_list: list,
     ):
         self.epsilon = epsilon
         self.movesets = moveset_database
         self.all_pokemon = all_keys
-        self.pokedex = Pokedex(pokedex_json_path)
+        self.pokedex = Pokedex()
         self.teams = []
         self.ban_list = ban_list
 
@@ -69,13 +73,15 @@ class TeamBuilder(Teambuilder):
         ban_list = self.ban_list.copy()
         for i in range(6):
             # 1 - Epsilon chance of picking a team based on winrate
-            if np.random.random() > self.epsilon.calculate_epsilon(database.num_battles):
+            if np.random.random() > self.epsilon.calculate_epsilon(
+                database.num_battles
+            ):
                 # Sample based on winrate
                 probabilities = database.winrates.copy()
-                # Adjust probabilities so that stronger Pokemon are 
+                # Adjust probabilities so that stronger Pokemon are
                 # more likely to be picked
                 # We use 6 simply because there are 6 Pokemon in a team
-                probabilities = probabilities ** 6
+                probabilities = probabilities**6
             # There is an epsilon chance of picking low-usage Pokemon
             else:
                 # Sample based on 1 - pickrate
