@@ -80,8 +80,7 @@ def make_model(
         # Create a temporary player to get sample inputs/outputs to build
         # the model with
         temp = full_state_agent.FullStatePlayer(
-            config={"create": False, "lookup_filename": lookup_path},
-            opponent=None
+            config={"create": False, "lookup_filename": lookup_path}, opponent=None
         )
         state = temp.create_empty_state_vector()
         state = temp.state_to_machine_readable_state(state)
@@ -107,8 +106,6 @@ if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
     meta_discovery_db_path = "meta_discovery/data/test.joblib"
     tier_list_path = "meta_discovery/data/tier_data.joblib"
-    # Used to enforce species clause
-    pokedex_json_path = "https://raw.githubusercontent.com/hsahovic/poke-env/master/src/poke_env/data/pokedex.json"
 
     # Total num. battles to simulate
     num_battles_to_simulate = 20000
@@ -129,7 +126,7 @@ if __name__ == "__main__":
     # Metagame / Ban List Selection [read comment at the top]
     metagame = "gen8ubers"
     playable_tier = "ou"
-    banlist_pokemon_exclusions = ["zygarde"]
+    banlist_pokemon_exclusions = []
     banlist_moveset_exclusions = []
 
     # Number of battles to run simultaneously
@@ -138,8 +135,8 @@ if __name__ == "__main__":
     random_seed = 42
 
     # Setup player information - Determines what kind of agent we have
-    player1_model_type = "flatten"  # full, flatten, simple, heuristic
-    player2_model_type = "flatten"  # full, flatten, simple, heuristic
+    player1_model_type = "simple"  # full, flatten, simple, heuristic
+    player2_model_type = "simple"  # full, flatten, simple, heuristic
 
     player1_class = get_player_class(player1_model_type)
     player2_class = get_player_class(player2_model_type)
@@ -159,13 +156,13 @@ if __name__ == "__main__":
         player2_model_kwargs["pokemon_embedding_dim"] = 128
         player2_model_kwargs["team_embedding_dim"] = 128
 
-    player1_model_dir = "models/ppo_flatten_test/"
-    player1_model_name = "model_1024.pt"
+    player1_model_dir = "outputs/Simple_PPO_SelfPlay_v1.0/"
+    player1_model_name = "model_2047627.pt"
     player1_model_path = os.path.join(player1_model_dir, player1_model_name)
     player1_lookup_path = None
 
-    player2_model_dir = "models/ppo_flatten_test/"
-    player2_model_name = "model_1024.pt"
+    player2_model_dir = "outputs/Simple_PPO_SelfPlay_v1.0/"
+    player2_model_name = "model_2047627.pt"
     player2_model_path = os.path.join(player2_model_dir, player2_model_name)
     player2_lookup_path = None
 
@@ -255,7 +252,7 @@ if __name__ == "__main__":
 
     all_pokemon = list(meta_discovery_database.key2pokemon.values())
     team_builder = TeamBuilder(
-        exploration_control, moveset_database, all_pokemon, pokedex_json_path, ban_list
+        exploration_control, moveset_database, all_pokemon, ban_list
     )
 
     # Setup server configuration
@@ -287,7 +284,7 @@ if __name__ == "__main__":
         print(f"Epoch {i+1}")
 
         # Generate new teams
-        print("Generating New Teams")
+        print("Generating New Teams.")
         start = time.time()
         team_builder.generate_teams(meta_discovery_database, num_teams_to_generate)
         end = time.time()
@@ -298,7 +295,7 @@ if __name__ == "__main__":
         player2._team = team_builder
 
         # Play battles
-        print("Battling")
+        print("Battling.")
         start = time.time()
         asyncio.run(
             play_battles(
@@ -311,37 +308,21 @@ if __name__ == "__main__":
         print(f"Battles Completed: {team_generation_interval}")
         print(f"Time Taken: {end - start}s")
 
-        # Extract stats from the battles played
-        # We get battle IDs from p1 since both players are in every battle.
-        # This needs to be changed if we have multiple players
-        player1_all_wins = []
-        player1_all_losses = []
-        player2_all_wins = []
-        player2_all_losses = []
-        for battle in player1.battles:
-            p1_team = [
-                pokemon.species for _, pokemon in player1.battles[battle].team.items()
-            ]
-            p2_team = [
-                pokemon.species for _, pokemon in player2.battles[battle].team.items()
-            ]
-            if player1.battles[battle].won:
-                player1_all_wins.extend(p1_team)
-                player2_all_losses.extend(p2_team)
-            else:
-                player2_all_wins.extend(p2_team)
-                player1_all_losses.extend(p1_team)
+        # Update overall battle statistics
+        print("Updating.")
+        start = time.time()
+        meta_discovery_database.update_battle_statistics(
+            player1,
+            player2,
+            team_generation_interval,
+        )
+        end = time.time()
+        print(f"Time Taken: {end - start}s")
 
         # Reset trackers so we don't count battles twice
         player1.reset_battles()
         player2.reset_battles()
 
-        # Update overall statistics
-        meta_discovery_database.update_battle_statistics(
-            player1_all_wins + player2_all_wins,
-            player1_all_losses + player2_all_losses,
-            team_generation_interval,
-        )
         # Save DB
         meta_discovery_database.save(meta_discovery_db_path)
     end_time = time.time()
