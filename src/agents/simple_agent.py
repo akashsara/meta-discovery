@@ -56,7 +56,7 @@ class SimpleRLPlayer(Gen8EnvSinglePlayerFixed):
 
     def calc_reward(self, last_battle, current_battle) -> float:
         return self.reward_computing_helper(
-            current_battle, fainted_value=2, hp_value=1, victory_value=30
+            current_battle, fainted_value=0.0125, hp_value=0.1, victory_value=1
         )
 
     def describe_embedding(self) -> Space:
