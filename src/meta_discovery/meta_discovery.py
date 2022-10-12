@@ -54,6 +54,7 @@ class MetaDiscoveryDatabase:
         self.pickrates = database["pickrates"]
         self.pokemon2key = database["pokemon2key"]
         self.key2pokemon = database["key2pokemon"]
+        self.popularity_matrix = database["popularity_matrix"]
 
     def save(self, save_path):
         joblib.dump(
@@ -65,6 +66,7 @@ class MetaDiscoveryDatabase:
                 "pickrates": self.pickrates,
                 "pokemon2key": self.pokemon2key,
                 "key2pokemon": self.key2pokemon,
+                "popularity_matrix": self.popularity_matrix,
             },
             save_path,
         )
