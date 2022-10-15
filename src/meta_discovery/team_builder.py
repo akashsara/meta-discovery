@@ -179,8 +179,8 @@ class TeamBuilder(Teambuilder):
             ):
                 if len(team) == 0:
                     # When we don't have any Pokemon
-                    # We use the pickrates to choose the first Pokemon
-                    weights = database.pickrates.copy()
+                    # We use the winrates to choose the first Pokemon
+                    weights = database.winrates.copy()
                 else:
                     ## Calculate Type Score
                     # Get types of all pokemon in team_ids
