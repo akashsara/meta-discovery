@@ -4,7 +4,6 @@ import sys
 import joblib
 import numpy as np
 import pandas as pd
-from tabulate import tabulate
 
 sys.path.append("./")
 from meta_discovery import utils
@@ -27,11 +26,11 @@ def fix_stats(month, prev_month):
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
     prior_month_data_path = ""
-    month1_data_path = "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.joblib.month1.joblib"
-    month2_data_path = "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.joblib.month2.joblib"
-    month3_data_path = "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.joblib.month3.joblib"
+    month1_data_path = "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.joblib.month1.joblib"
+    month2_data_path = "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.joblib.month2.joblib"
+    month3_data_path = "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.joblib.month3.joblib"
     output_file = (
-        "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.csv"
+        "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.csv"
     )
 
     # Set random seed for reproducible results
@@ -76,9 +75,9 @@ if __name__ == "__main__":
 
     # Calculate 3 Month Average
     sum_battles = month3.num_battles + month2.num_battles + month1.num_battles
-    num_battles = sum_battles // 3
+    num_battles = sum_battles
     sum_picks = month3.picks + month2.picks + month1.picks
-    picks = sum_picks // 3
+    picks = sum_picks
     pickrates = sum_picks / (2 * sum_battles)
 
     # Store in dict
@@ -91,10 +90,10 @@ if __name__ == "__main__":
                 "pokemon": pokemon,
                 "num_battles": num_battles,
                 "picks": picks[key],
-                "pickrates": pickrates[key],
+                "average_pickrates": pickrates[key],
             }
         )
 
     # Convert to csv, sort, and save.
-    df = pd.DataFrame(output).sort_values("pickrates", ascending=False)
+    df = pd.DataFrame(output).sort_values("average_pickrates", ascending=False)
     df.to_csv(output_file)
