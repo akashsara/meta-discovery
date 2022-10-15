@@ -77,19 +77,20 @@ if __name__ == "__main__":
     sum_battles = month3.num_battles + month2.num_battles + month1.num_battles
     num_battles = sum_battles
     sum_picks = month3.picks + month2.picks + month1.picks
-    picks = sum_picks
+    sum_wins = month3.wins + month2.wins + month1.wins
     pickrates = sum_picks / (2 * sum_battles)
 
     # Store in dict
     output = []
     for key, pokemon in month3.key2pokemon.items():
-        if picks[key] == 0:
+        if sum_picks[key] == 0:
             continue
         output.append(
             {
                 "pokemon": pokemon,
                 "num_battles": num_battles,
-                "picks": picks[key],
+                "picks": sum_picks[key],
+                "wins": sum_wins[key],
                 "average_pickrates": pickrates[key],
             }
         )
