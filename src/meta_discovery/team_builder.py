@@ -46,7 +46,7 @@ class Pokedex:
         # Create mapping for id to types & list of base stat weights
         self.bst_weights = np.zeros((len(self.id2pokemon)))
         self.id2types = {}
-        for id_, pokemon in enumerate(self.id2pokemon):
+        for id_, pokemon in self.id2pokemon.items():
             self.bst_weights[id_] = pokedex["base_stat_total"][pokemon]
             self.id2types[id_] = pokedex["types"][pokemon]
 
