@@ -211,8 +211,8 @@ class TeamBuilder(Teambuilder):
                         axis=0
                     ) / len(team_indices)
                     ## Compute overall weights
-                    term1 = self.c1[len(team)] * (bst_score + (1.4 * type_score))
-                    term2 = self.c2[len(team)] * (2.4 * popularity_score)
+                    term1 = self.c1[len(team)] * (bst_score + type_score)
+                    term2 = self.c2[len(team)] * (popularity_score)
                     weights = term1 + term2
 
             # There is an epsilon chance of picking low-usage Pokemon
