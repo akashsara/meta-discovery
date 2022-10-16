@@ -141,6 +141,8 @@ def get_ban_list(current_tier, tier_list_path, exclusions=[]):
         if tier == current_tier:
             break
         banned_tiers.append(tier)
+    if tier not in ["LC", "(LC)"]:
+        banned_tiers.append("LC")
     print("Banned Tiers:")
     print(banned_tiers)
 
