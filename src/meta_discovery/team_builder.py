@@ -166,6 +166,15 @@ class TeamBuilder(Teambuilder):
         else:
             return (weights + 1) / weights.shape[0]
 
+    def weights2softmax(self, weights: np.ndarray) -> np.ndarray:
+        """
+        Uses a masked softmax to generate probabilities.
+        Subtract the max for numerical stability.
+        """
+        weights[weights == 0] = -1e32
+        e_x = np.exp(weights - weights.max())
+        return e_x / e_x.sum()
+
     def generate_team(self, database: MetaDiscoveryDatabase) -> str:
         team = []  # To hold the actual movesets
         team_pokemon = []  # to hold Pokemon IDs
@@ -202,8 +211,8 @@ class TeamBuilder(Teambuilder):
                     ## Compute Popularity Score
                     popularity_matrix = database.popularity_matrix.copy()
                     popularity_matrix = normalize(popularity_matrix)
-                    # Our MetaDiscovery Database uses a different set of keys
-                    # So we convert that to the keys used in the Pokedex
+                    # Get indices from pokemon names
+                    # Note that database.pokemon2key == pokedex.pokemon2id
                     team_indices = [
                         database.pokemon2key[pokemon] for pokemon in team_pokemon
                     ]
