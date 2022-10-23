@@ -100,13 +100,25 @@ class Pokedex:
             for strength in row["strengths"]:
                 self.type_chart[self.type2type_id[strength]][current_type] = 1
 
+    def find_type_weaknesses(self, types: list[str]) -> np.ndarray:
+        """
+        Calculate overall team "type"
+        The final vector will contain the effectiveness of types
+        against the team
+        """
+        return sum([self.type_chart[self.type2type_id[type_]] for type_ in types])
+
+    def calculate_meta_type_weights(self, types: list[str]) -> np.ndarray:
+        """
+        Takes in a list of Pokemon types, ideally from the top N meta Pokemon.
+        Calculates type effectiveness against the meta.
+        So the highest numbers here would be the best types to use.
+        """
+        weaknesses = self.find_type_weaknesses(types)
+        return normalize(weaknesses).reshape(-1, 1)
+
     def calculate_type_weights(self, types: list[str]) -> np.ndarray:
-        # Calculate overall team "type"
-        # The final vector will contain the effectiveness of types
-        # against the team
-        team_weaknesses = sum(
-            [self.type_chart[self.type2type_id[type_]] for type_ in types]
-        )
+        team_weaknesses = self.find_type_weaknesses(types)
         # We assume that the enemy has Pokemon strong against us.
         # Now we find the types the enemy is weak to.
         counter_types = np.zeros(self.type_chart.shape[0])
