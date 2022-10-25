@@ -168,15 +168,18 @@ class TeamBuilder(Teambuilder):
         self.c1 = [0, 1 / 3, 1 / 2, 2 / 3, 4 / 5, 9 / 10]
         self.c2 = [1 - x for x in self.c1]
 
-    def weights2probabilities(self, weights: np.ndarray) -> np.ndarray:
+    def weights2probabilities(self, weights: np.ndarray, mask_ids: list) -> np.ndarray:
         """
-        np.choice requires probabilities not weights
+        np.choice requires probabilities not weights.
         """
         summation = weights.sum()
         if summation:
             return weights / summation
         else:
-            return (weights + 1) / weights.shape[0]
+            probs = (weights + 1) / (weights.shape[0] - len(mask_ids))
+            # Ensure that bans remain banned
+            probs[mask_ids] = 0
+            return probs
 
     def weights2softmax(self, weights: np.ndarray) -> np.ndarray:
         """
@@ -246,9 +249,8 @@ class TeamBuilder(Teambuilder):
                 for pokemon in ban_list
                 if pokemon in database.pokemon2key
             ]
-            weights[ban_list_ids] = 0
             # Convert weights to probabilities
-            probabilities = self.weights2probabilities(weights)
+            probabilities = self.weights2probabilities(weights, mask_ids=ban_list_ids)
             # Pick a Pokemon
             pokemon = np.random.choice(a=self.all_pokemon, p=probabilities)
             # Select a random moveset for the selected Pokemon
