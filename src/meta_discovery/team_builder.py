@@ -176,6 +176,7 @@ class TeamBuilder(Teambuilder):
         """
         summation = weights.sum()
         if summation:
+            weights[mask_ids] = 0
             return weights / summation
         else:
             probs = (weights + 1) / (weights.shape[0] - len(mask_ids))
