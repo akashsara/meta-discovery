@@ -156,6 +156,7 @@ class TeamBuilder(Teambuilder):
         moveset_database: dict,
         all_pokemon: list,
         ban_list: list,
+        use_pickrates: bool,
     ):
         self.epsilon = epsilon
         self.movesets = moveset_database
@@ -163,6 +164,7 @@ class TeamBuilder(Teambuilder):
         self.pokedex = Pokedex(legal_pokemon=all_pokemon)
         self.teams = []
         self.ban_list = ban_list
+        self.use_pickrates = use_pickrates
         # We use this to weigh the formula for picking Pokemon
         # Where the index refers to the number of Pokemon on the team
         self.c1 = [0, 1 / 3, 1 / 2, 2 / 3, 4 / 5, 9 / 10]
@@ -203,8 +205,11 @@ class TeamBuilder(Teambuilder):
             ):
                 if len(team) == 0:
                     # When we don't have any Pokemon
-                    # We use the winrates to choose the first Pokemon
-                    weights = database.winrates.copy()
+                    # We use the pickrates/winrates to choose the first Pokemon
+                    if self.use_pickrates:
+                        weights = database.pickrates.copy()
+                    else:
+                        weights = database.winrates.copy()
                 else:
                     ## Calculate Type Score
                     # Get types of all pokemon in team_ids
@@ -221,8 +226,24 @@ class TeamBuilder(Teambuilder):
                     type_score = self.pokedex.pokemon_type_matrix * type_weights
                     # (n_pokemon, n_types) -> (n_pokemon, )
                     type_score = type_score.sum(axis=0)
+
+                    ## Compute Meta Type Score
+                    # Get types of all pokemon in team_ids
+                    meta_types = [
+                        type_
+                        for pokemon in database.pickrates.argsort()[-40:]
+                        for type_ in self.pokedex.id2types[pokemon]
+                    ]
+                    # Compute best types to counter the team's counter types
+                    meta_type_weights = self.pokedex.calculate_meta_type_weights(types)
+                    # Use type_weights to get pokemon weights
+                    meta_type_score = self.pokedex.pokemon_type_matrix * meta_type_weights
+                    # (n_pokemon, n_types) -> (n_pokemon, )
+                    meta_type_score = meta_type_score.sum(axis=0)
+
                     ## Compute BST Score
                     bst_score = self.pokedex.bst_weights.copy()
+
                     ## Compute Popularity Score
                     popularity_matrix = database.popularity_matrix.copy()
                     popularity_matrix = normalize(popularity_matrix)
