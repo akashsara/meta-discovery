@@ -259,7 +259,7 @@ class TeamBuilder(Teambuilder):
                         axis=0
                     ) / len(team_indices)
                     ## Compute overall weights
-                    term1 = self.c1[len(team)] * (0.5 * bst_score + 0.2 * meta_type_score * 0.25 * type_score)
+                    term1 = self.c1[len(team)] * (0.5 * bst_score + 0.25 * meta_type_score * 0.25 * type_score)
                     term2 = self.c2[len(team)] * (popularity_score)
                     weights = term1 + term2
 
