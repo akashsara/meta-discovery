@@ -184,11 +184,14 @@ class TeamBuilder(Teambuilder):
             probs[mask_ids] = 0
             return probs
 
-    def weights2softmax(self, weights: np.ndarray) -> np.ndarray:
+    def weights2softmax(self, weights: np.ndarray, mask_ids: list) -> np.ndarray:
         """
         Uses a masked softmax to generate probabilities.
         Subtract the max for numerical stability.
         """
+        # We do it this way since there is a chance that
+        # other unbanned Pokemon have a weight of 0
+        weights[mask_ids] = 0
         weights[weights == 0] = -1e32
         e_x = np.exp(weights - weights.max())
         return e_x / e_x.sum()
