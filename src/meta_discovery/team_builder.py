@@ -178,10 +178,10 @@ class TeamBuilder(Teambuilder):
             weights[mask_ids] = 0
             return weights / weights.sum()
         else:
-            probs = (weights + 1) / (weights.shape[0] - len(mask_ids))
-            # Ensure that bans remain banned
-            probs[mask_ids] = 0
-            return probs
+            # If all weights are 0
+            probs = np.ones_like(weights)
+            probs[mask_ids] = 0.0
+            return probs / probs.sum()
 
     def weights2softmax(self, weights: np.ndarray, mask_ids: list) -> np.ndarray:
         """
