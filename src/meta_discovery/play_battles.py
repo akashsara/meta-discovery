@@ -114,6 +114,13 @@ if __name__ == "__main__":
     # Num. teams generated
     num_teams_to_generate = 2500
 
+    # Team generation parameters
+    use_pickrates = True
+    use_popularity_score = True
+    use_type_score = True
+    use_meta_type_score = True
+    use_bst_score = True
+
     # Exploration Factor - Epsilon
     # Prob. of using inverse pickrate over winrate
     epsilon_min = 0.001
@@ -252,7 +259,15 @@ if __name__ == "__main__":
 
     all_pokemon = list(meta_discovery_database.key2pokemon.values())
     team_builder = TeamBuilder(
-        exploration_control, moveset_database, all_pokemon, ban_list
+        epsilon=exploration_control,
+        moveset_database=moveset_database,
+        all_pokemon=all_pokemon,
+        ban_list=ban_list,
+        use_pickrates=use_pickrates,
+        use_popularity_score=use_popularity_score,
+        use_type_score=use_type_score,
+        use_meta_type_score=use_meta_type_score,
+        use_bst_score=use_bst_score,
     )
 
     # Setup server configuration

@@ -157,6 +157,10 @@ class TeamBuilder(Teambuilder):
         all_pokemon: list,
         ban_list: list,
         use_pickrates: bool,
+        use_popularity_score: bool,
+        use_type_score: bool,
+        use_meta_type_score: bool,
+        use_bst_score: bool,
     ):
         self.epsilon = epsilon
         self.movesets = moveset_database
@@ -165,6 +169,10 @@ class TeamBuilder(Teambuilder):
         self.teams = []
         self.ban_list = ban_list
         self.use_pickrates = use_pickrates
+        self.use_popularity_score = use_popularity_score
+        self.use_type_score = use_type_score
+        self.use_meta_type_score = use_meta_type_score
+        self.use_bst_score = use_bst_score
         # We use this to weigh the formula for picking Pokemon
         # Where the index refers to the number of Pokemon on the team
         self.c1 = [0, 1 / 3, 1 / 2, 2 / 3, 4 / 5, 9 / 10]
@@ -206,15 +214,24 @@ class TeamBuilder(Teambuilder):
             if np.random.random() > self.epsilon.calculate_epsilon(
                 database.num_battles
             ):
-                if len(team) == 0:
-                    # When we don't have any Pokemon
-                    # We use the pickrates/winrates to choose the first Pokemon
-                    if self.use_pickrates:
-                        weights = database.pickrates.copy()
-                    else:
-                        weights = database.winrates.copy()
+                ## Compute Popularity Score
+                if self.use_popularity_score and len(team) > 0:
+                    popularity_matrix = database.popularity_matrix.copy()
+                    popularity_matrix = normalize(popularity_matrix)
+                    # Get indices from pokemon names
+                    # Note that database.pokemon2key == pokedex.pokemon2id
+                    team_indices = [
+                        database.pokemon2key[pokemon] for pokemon in team_pokemon
+                    ]
+                    popularity_score = popularity_matrix[team_indices].sum(
+                        axis=0
+                    ) / len(team_indices)
                 else:
-                    ## Calculate Type Score
+                    # We assign all ones since we multiply
+                    popularity_score = np.ones_like(self.pokedex.bst_weights)
+
+                ## Calculate Type Score
+                if self.use_type_score and len(team) > 0:                    
                     # Get types of all pokemon in team_ids
                     types = [
                         type_
@@ -229,39 +246,43 @@ class TeamBuilder(Teambuilder):
                     type_score = self.pokedex.pokemon_type_matrix * type_weights
                     # (n_pokemon, n_types) -> (n_pokemon, )
                     type_score = type_score.sum(axis=0)
-
-                    ## Compute Meta Type Score
-                    # Get types of all pokemon in team_ids
+                else:
+                    # We assign all ones since we multiply and then add
+                    # So this becomes a constant value
+                    type_score = np.ones_like(self.pokedex.bst_weights)
+                    
+                ## Compute Meta Type Score
+                if self.use_meta_type_score:
+                    # Get types of all pokemon in the meta = top 40
                     meta_types = [
                         type_
                         for pokemon in database.pickrates.argsort()[-40:]
                         for type_ in self.pokedex.id2types[pokemon]
                     ]
-                    # Compute best types to counter the team's counter types
-                    meta_type_weights = self.pokedex.calculate_meta_type_weights(types)
-                    # Use type_weights to get pokemon weights
+                    # Compute best types to counter the meta
+                    meta_type_weights = self.pokedex.calculate_meta_type_weights(meta_types)
+                    # Use these weights to get weighted Pokemon
                     meta_type_score = self.pokedex.pokemon_type_matrix * meta_type_weights
                     # (n_pokemon, n_types) -> (n_pokemon, )
                     meta_type_score = meta_type_score.sum(axis=0)
+                else:
+                    # We assign all ones since we multiply and then add
+                    # So this becomes a constant value
+                    meta_type_score = np.ones_like(self.pokedex.bst_weights)
 
-                    ## Compute BST Score
+                ## Retrieve BST Score
+                if self.use_bst_score:
                     bst_score = self.pokedex.bst_weights.copy()
+                else:
+                    # We assign all ones since we multiply and then add
+                    # So this becomes a constant value
+                    bst_score = np.ones_like(self.pokedex.bst_weights)
 
-                    ## Compute Popularity Score
-                    popularity_matrix = database.popularity_matrix.copy()
-                    popularity_matrix = normalize(popularity_matrix)
-                    # Get indices from pokemon names
-                    # Note that database.pokemon2key == pokedex.pokemon2id
-                    team_indices = [
-                        database.pokemon2key[pokemon] for pokemon in team_pokemon
-                    ]
-                    popularity_score = popularity_matrix[team_indices].sum(
-                        axis=0
-                    ) / len(team_indices)
-                    ## Compute overall weights
-                    term1 = self.c1[len(team)] * (0.5 * bst_score + 0.25 * meta_type_score * 0.25 * type_score)
-                    term2 = self.c2[len(team)] * (popularity_score)
-                    weights = term1 + term2
+                ## Compute overall weights
+                term1 = database.pickrates.copy() if self.use_pickrates else database.winrates.copy()
+                term2 = (0.5 * bst_score) + (0.25 * meta_type_score) + (0.25 * type_score)
+                term3 = popularity_score
+                weights = (term1 ** 3) * term2 * term3
 
             # There is an epsilon chance of picking low-usage Pokemon
             else:
