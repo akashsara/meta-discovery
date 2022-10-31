@@ -138,7 +138,7 @@ def run_selfplay(
             random_agent,
             max_damage_agent,
             smart_max_damage_agent,
-            f"initial",
+            f"{rl_model.iterations}_initial",
             evaluation_results,
         )
         # Save evaluation results
@@ -195,7 +195,7 @@ def run_selfplay(
                 random_agent,
                 max_damage_agent,
                 smart_max_damage_agent,
-                f"validation_{i+1}",
+                f"{rl_model.iterations}_validation",
                 evaluation_results,
             )
             # Save evaluation results
@@ -214,7 +214,7 @@ def run_selfplay(
             random_agent,
             max_damage_agent,
             smart_max_damage_agent,
-            f"final",
+            f"{rl_model.iterations}_final",
             evaluation_results,
         )
         # Save evaluation results
