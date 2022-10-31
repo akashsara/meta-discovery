@@ -21,7 +21,7 @@ def calculate_edit_distance(previous_meta, current_meta, top_n):
                 0
             ]
             current = current_meta[current_meta["pokemon"] == pokemon].index.values[0]
-            edit_distance = previous - current
+            edit_distance = np.absolute(previous - current)
             all_edit_distances.append(edit_distance)
         else:
             print(
