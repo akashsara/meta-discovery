@@ -26,12 +26,20 @@ def fix_stats(month, prev_month):
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
     prior_month_data_path = ""
-    month1_data_path = "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.joblib.month1.joblib"
-    month2_data_path = "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.joblib.month2.joblib"
-    month3_data_path = "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.joblib.month3.joblib"
-    output_file = (
-        "meta_discovery/data/standard_ou_kyurem_v2/standard_ou_kyurem_preban_v2.csv"
+    base_dir = "meta_discovery/data/"
+    prefix = "standard_ou_kyurem_"
+    mode = "preban"
+    version = "v45"
+    month1_data_path = (
+        f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.joblib.month1.joblib"
     )
+    month2_data_path = (
+        f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.joblib.month2.joblib"
+    )
+    month3_data_path = (
+        f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.joblib.month3.joblib"
+    )
+    output_file = f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.csv"
 
     # Set random seed for reproducible results
     random_seed = 42
@@ -59,12 +67,12 @@ if __name__ == "__main__":
     print("Loading Month 2")
     month2 = MetaDiscoveryDatabase(moveset_database)
     month2.load(month2_data_path)
-    print(f"Load complete. {month2.num_battles} Battles Complete")
+    print(f"Load complete. {month2.num_battles - month1.num_battles} Battles Complete")
 
     print("Loading Month 3")
     month3 = MetaDiscoveryDatabase(moveset_database)
     month3.load(month3_data_path)
-    print(f"Load complete. {month3.num_battles} Battles Complete")
+    print(f"Load complete. {month3.num_battles - month2.num_battles} Battles Complete")
     print("---" * 30)
 
     # Fix stats so we have monthly data
