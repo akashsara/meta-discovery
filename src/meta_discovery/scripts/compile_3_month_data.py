@@ -53,16 +53,18 @@ if __name__ == "__main__":
     print("---" * 30)
     print("Setting up Meta Discovery database.")
 
+    prior_month_n_battles = 0
     if prior_month_data_path:
         print("Loading Prior Months Data")
         prior_months = MetaDiscoveryDatabase(moveset_database)
         prior_months.load(prior_month_data_path)
         print(f"Load complete. {prior_months.num_battles} Battles Complete")
+        prior_month_n_battles = prior_months.num_battles
 
     print("Loading Month 1")
     month1 = MetaDiscoveryDatabase(moveset_database)
     month1.load(month1_data_path)
-    print(f"Load complete. {month1.num_battles} Battles Complete")
+    print(f"Load complete. {month1.num_battles - prior_month_n_battles} Battles Complete")
 
     print("Loading Month 2")
     month2 = MetaDiscoveryDatabase(moveset_database)
