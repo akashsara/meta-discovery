@@ -24,12 +24,13 @@ from pokemon_showdown_accounts import id_dict
 #   Simple State SelfPlay DQN Agent, Full State SelfPlay DQN Agent
 #   Simple State PPO Agent, Full State PPO Agent
 #   Simple State SelfPlay PPO Agent, Full State SelfPlay PPO Agent
-AGENT = "Full State DQN Agent"
+#   Full State Flattened PPO Agent, Full State SelfPlay Flattened PPO Agent
+AGENT = "Full State SelfPlay Flattened PPO Agent"
 # Choose Mode:
 #   LADDER = Play 100 Matches on Ladder
 #   CHALLENGE = Accept a single challenge from any user on Showdown
-MODE = "CHALLENGE"
-NUM_GAMES = 1
+MODE = "LADDER"
+NUM_GAMES = 100
 OPPONENT = "DarkeKnight"  # Only used in CHALLENGE mode
 USERNAME = id_dict[AGENT]["username"]
 PASSWORD = id_dict[AGENT]["password"]
@@ -143,6 +144,42 @@ async def main():
         del temp_player
         # Create model
         model = full_state_models.ActorCriticBattleModel(**model_kwargs)
+        # Load checkpoint
+        checkpoint = torch.load(model_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        # Eval mode
+        model.eval()
+        # Setup player
+        player = full_state_agent.GeneralAPIFullStateAgent(
+            model=model,
+            player_configuration=PlayerConfiguration(USERNAME, PASSWORD),
+            server_configuration=ShowdownServerConfiguration,
+            start_timer_on_battle_start=True,
+            device=device,
+            **player_kwargs,
+        )
+    # Full State Flattened PPO Agent
+    elif AGENT in [
+        "Full State Flattened PPO Agent",
+        "Full State SelfPlay Flattened PPO Agent",
+    ]:
+        model_path = id_dict[AGENT]["model_path"]
+        model_kwargs = id_dict[AGENT]["model_kwargs"]
+        player_kwargs = id_dict[AGENT]["player_kwargs"]
+        # Setup temporary player to get some values
+        temp_player = full_state_agent.FullStatePlayer(
+            opponent=None,
+            config={
+                "create": False,
+                "lookup_filename": player_kwargs["lookup_filename"],
+            },
+        )    
+        state = temp_player.create_empty_state_vector()
+        state = temp_player.state_to_machine_readable_state(state)
+        model_kwargs["n_obs"] = state.shape[0]
+        del temp_player
+        # Create model
+        model = full_state_models.ActorCriticFlattenedBattleModel(**model_kwargs)
         # Load checkpoint
         checkpoint = torch.load(model_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
