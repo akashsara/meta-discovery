@@ -33,20 +33,47 @@ def calculate_edit_distance(previous_meta, current_meta, top_n):
 
 
 def calculate_overlap(baseline, generated, top_n):
-    generated = set(generated["pokemon"][:top_n].to_list())
-    baseline = baseline["pokemon"][:top_n].to_list()
-    return sum([1 if pokemon in generated else 0 for pokemon in baseline]) / top_n
+    generated_position_lookup = {
+        value: key for key, value in generated["pokemon"].items()
+    }
+    baseline_position_lookup = {
+        value: key for key, value in baseline["pokemon"].items()
+    }
+    generated_meta = set(generated["pokemon"][:top_n].to_list())
+    baseline_meta = set(baseline["pokemon"][:top_n].to_list())
+    true_unique_meta_pokemon = [
+        pokemon for pokemon in baseline_meta if pokemon not in generated_meta
+    ]
+    print("Pokemon In Existing Meta & Not In Our Meta:")
+    print(true_unique_meta_pokemon)
+    # For Pokemon in the existing meta but not in our meta, 
+    # what is the distance in ranking from our meta?
+    distances = [
+        generated_position_lookup.get(pokemon, len(generated_position_lookup)) - top_n + 1
+        for pokemon in true_unique_meta_pokemon
+    ]
+    d1 = np.mean(distances) if len(distances) > 0 else 0
+    our_unique_meta_pokemon = [
+        pokemon for pokemon in generated_meta if pokemon not in baseline_meta
+    ]
+    print("Pokemon Not In Existing Meta & In Our Meta:")
+    print(our_unique_meta_pokemon)
+    # For Pokemon in our meta but not in the existing meta, 
+    # what is the distance in ranking from the existing existing?
+    distances = [
+        baseline_position_lookup.get(pokemon, len(baseline_position_lookup)) - top_n + 1
+        for pokemon in our_unique_meta_pokemon
+    ]
+    d2 = np.mean(distances) if len(distances) > 0 else 0
+    print(f"Average Distance from Meta: ({d1:.2f}, {d2:.2f})")
+    return (top_n - len(true_unique_meta_pokemon)) / top_n
 
 
 if __name__ == "__main__":
-    smogon_preban_data = "usage_stats/spectrier_preban.csv"
-    smogon_postban_data = "usage_stats/spectrier_postban.csv"
-    our_preban_data = (
-        "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_preban.csv"
-    )
-    our_postban_data = (
-        "meta_discovery/data/standard_ou_spectrier/standard_ou_spectrier_postban.csv"
-    )
+    smogon_preban_data = "usage_stats/kyurem_preban.csv"
+    smogon_postban_data = "usage_stats/kyurem_postban.csv"
+    our_preban_data = "usage_stats/kyurem_preban.csv"
+    our_postban_data = f"meta_discovery/data/kyurem_postban_baseline.csv"
     top_n = 40  # No. Pokemon to consider
 
     # Set random seed for reproducible results
@@ -69,15 +96,19 @@ if __name__ == "__main__":
     our_edit_distances = calculate_edit_distance(our_preban, our_postban, top_n)
     print("---" * 10)
     print(
-        f"Smogon:\nMean Edit Distance: {np.mean(smogon_edit_distances):.4f}\nMedian Edit Distance: {np.median(smogon_edit_distances)}\nTotal Pokemon: {len(smogon_edit_distances)}"
+        f"Smogon:\nEdit Distances: {np.mean(smogon_edit_distances):.2f}/{np.median(smogon_edit_distances):.2f}\nTotal Pokemon: {len(smogon_edit_distances)}"
     )
     print("---" * 10)
     print(
-        f"Our:\nMean Edit Distance: {np.mean(our_edit_distances):.4f}\nMedian Edit Distance: {np.median(our_edit_distances):.4f}\nTotal Pokemon: {len(our_edit_distances)}"
+        f"Our:\nEdit Distances: {np.mean(our_edit_distances):.2f}/{np.median(our_edit_distances):.2f}\nTotal Pokemon: {len(our_edit_distances)}"
     )
 
+    print("###" * 20)
     # Version 2: Find Raw Overlap
+    print("PREBAN:")
     preban_overlap = calculate_overlap(smogon_preban, our_preban, top_n)
+    print("POSTBAN: ")
     postban_overlap = calculate_overlap(smogon_postban, our_postban, top_n)
-    print("###" * 10)
-    print(f"Pre-Ban Overlap: {preban_overlap*100:.4f}%.\nPost-Ban Overlap: {postban_overlap*100:.4f}%")
+    print(
+        f"Pre-Ban Overlap: {preban_overlap*100:.4f}%.\nPost-Ban Overlap: {postban_overlap*100:.4f}%"
+    )
