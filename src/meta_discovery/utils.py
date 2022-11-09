@@ -95,7 +95,13 @@ def legality_checker(moveset_database, tier, ban_list, exclusions=[]):
         # Light Clay is banned below OU
         ("lightclay", ["anythingoes", "ubers", "ou"], "Light Clay Clause"),
         # King's Rock is banned below OU
-        ("kingsrock", ["anythingoes", "ubers", "out"], "King's Rock Clause"),
+        ("kingsrock", ["anythingoes", "ubers", "ou"], "King's Rock Clause"),
+        # Slush Rush is banned below RU
+        ("slushrush", ["anythingoes", "ubers", "ou", "uu", "ru"], "Slush Rush Clause"),
+        # Drizzle is banned below RU
+        ("drizzle", ["anythingoes", "ubers", "ou", "uu", "ru"], "Drizzle Clause"),
+        # Drought is banned below RU
+        ("drought", ["anythingoes", "ubers", "ou", "uu", "ru"], "Drought Clause"),
     ]
 
     for pokemon, movesets in moveset_database.items():
