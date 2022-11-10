@@ -135,7 +135,7 @@ def legality_checker(moveset_database, tier, ban_list, exclusions=[]):
     return moveset_database, ban_list
 
 
-def get_ban_list(current_tier, tier_list_path, exclusions=[]):
+def get_ban_list(current_tier, tier_list_path, exclusions=[], ban_lc=True):
     if not os.path.exists(tier_list_path):
         raise Exception(
             f"We couldn't find the tier list file at {tier_list_path}. Please run meta_discovery/scripts/download_tiers.py"
@@ -147,7 +147,7 @@ def get_ban_list(current_tier, tier_list_path, exclusions=[]):
         if tier == current_tier:
             break
         banned_tiers.append(tier)
-    if tier not in ["LC", "(LC)"]:
+    if ban_lc and tier not in ["LC", "(LC)"]:
         banned_tiers.append("LC")
     print("Banned Tiers:")
     print(banned_tiers)
