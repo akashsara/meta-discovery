@@ -120,6 +120,7 @@ if __name__ == "__main__":
     use_type_score = True
     use_meta_type_score = True
     use_bst_score = True
+    ban_lc = True
 
     # Exploration Factor - Epsilon
     # Prob. of using inverse pickrate over winrate
@@ -230,7 +231,7 @@ if __name__ == "__main__":
     print("---" * 40)
     print(f"Tier Selected: {playable_tier}")
     ban_list = utils.get_ban_list(
-        playable_tier, tier_list_path, banlist_pokemon_exclusions
+        playable_tier, tier_list_path, banlist_pokemon_exclusions, ban_lc=ban_lc
     )
     print("---" * 30)
     print("Ban List in Effect:")
