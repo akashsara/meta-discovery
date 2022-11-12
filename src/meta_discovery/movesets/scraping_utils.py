@@ -83,6 +83,9 @@ def pokemon_name_edge_case_handler(pokemon, moveset_name):
     elif pokemon_id == "darmanitanzen":
         pokemon_id = "darmanitan"
         pokemon_name = "Darmanitan"
+    elif pokemon_id == "zarudedada":
+        pokemon_id = "zarude"
+        pokemon_name = "Zarude"
     else:
         pokemon_name = pokemon
 
