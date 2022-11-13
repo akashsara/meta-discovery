@@ -3,6 +3,8 @@ import sys
 
 import joblib
 import numpy as np
+
+np.seterr(divide="ignore", invalid="ignore")
 import pandas as pd
 
 sys.path.append("./")
@@ -25,21 +27,21 @@ def fix_stats(month, prev_month):
 
 if __name__ == "__main__":
     moveset_db_path = "meta_discovery/data/moveset_database.joblib"
-    prior_month_data_path = ""
+    prior_month_data_path = ""  # "meta_discovery/data/smogon_ou_multi_preban.joblib"
     base_dir = "meta_discovery/data/"
-    prefix = "standard_ou_kyurem_"
-    mode = "preban"
-    version = "v45"
+    prefix = "smogon_ou_kyurem_final_"
+    mode = ""
+    version = "v1.1"
     month1_data_path = (
-        f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.joblib.month1.joblib"
+        f"{base_dir}{prefix}{version}/{prefix}{mode}{version}.joblib.month1.joblib"
     )
     month2_data_path = (
-        f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.joblib.month2.joblib"
+        f"{base_dir}{prefix}{version}/{prefix}{mode}{version}.joblib.month2.joblib"
     )
     month3_data_path = (
-        f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.joblib.month3.joblib"
+        f"{base_dir}{prefix}{version}/{prefix}{mode}{version}.joblib.month3.joblib"
     )
-    output_file = f"{base_dir}{prefix}{version}/{prefix}{mode}_{version}.csv"
+    output_file = f"{base_dir}{prefix}{version}/{prefix}{mode}{version}.csv"
 
     # Set random seed for reproducible results
     random_seed = 42
@@ -50,32 +52,20 @@ if __name__ == "__main__":
     # Load moveset DB
     moveset_database = joblib.load(moveset_db_path)
 
-    print("---" * 30)
-    print("Setting up Meta Discovery database.")
-
     prior_month_n_battles = 0
     if prior_month_data_path:
-        print("Loading Prior Months Data")
         prior_months = MetaDiscoveryDatabase(moveset_database)
         prior_months.load(prior_month_data_path)
-        print(f"Load complete. {prior_months.num_battles} Battles Complete")
         prior_month_n_battles = prior_months.num_battles
 
-    print("Loading Month 1")
     month1 = MetaDiscoveryDatabase(moveset_database)
     month1.load(month1_data_path)
-    print(f"Load complete. {month1.num_battles - prior_month_n_battles} Battles Complete")
 
-    print("Loading Month 2")
     month2 = MetaDiscoveryDatabase(moveset_database)
     month2.load(month2_data_path)
-    print(f"Load complete. {month2.num_battles - month1.num_battles} Battles Complete")
 
-    print("Loading Month 3")
     month3 = MetaDiscoveryDatabase(moveset_database)
     month3.load(month3_data_path)
-    print(f"Load complete. {month3.num_battles - month2.num_battles} Battles Complete")
-    print("---" * 30)
 
     # Fix stats so we have monthly data
     month3 = fix_stats(month3, month2)  # Month 3 = Month 3 - Month 2
@@ -108,3 +98,7 @@ if __name__ == "__main__":
     # Convert to csv, sort, and save.
     df = pd.DataFrame(output).sort_values("average_pickrates", ascending=False)
     df.to_csv(output_file)
+
+    print(
+        f"{prefix}{mode}{version}: [{month1.num_battles}, {month2.num_battles}, {month3.num_battles}]"
+    )
