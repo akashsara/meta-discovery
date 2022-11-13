@@ -76,32 +76,32 @@ def legality_checker(moveset_database, tier, ban_list, exclusions=[]):
         ("batonpass", ["anythinggoes"], "Baton Pass Clause"),
         # Double Team & Minimize = Evasion Clause
         # Banned in all competitive tiers
-        ("doubleteam", ["anythingoes"], "Evasion Clause"),
-        ("minimize", ["anythingoes"], "Evasion Clause"),
+        ("doubleteam", ["anythinggoes"], "Evasion Clause"),
+        ("minimize", ["anythinggoes"], "Evasion Clause"),
         # Fissure, Guillotine, Horn Drill, Sheer COld = OHKO Clause
         # Banned in all competitive tiers
-        ("fissure", ["anythingoes"], "OHKO Clause"),
-        ("guillotine", ["anythingoes"], "OHKO Clause"),
-        ("horndrill", ["anythingoes"], "OHKO Clause"),
-        ("sheercold", ["anythingoes"], "OHKO Clause"),
+        ("fissure", ["anythinggoes"], "OHKO Clause"),
+        ("guillotine", ["anythinggoes"], "OHKO Clause"),
+        ("horndrill", ["anythinggoes"], "OHKO Clause"),
+        ("sheercold", ["anythinggoes"], "OHKO Clause"),
         # Shadow Tag is banned in all competitive tiers
-        ("shadowtag", ["anythingoes"], "Shadow Tag Clause"),
+        ("shadowtag", ["anythinggoes"], "Shadow Tag Clause"),
         # Moody Clause - banned below Ubers
-        ("moody", ["anythingoes", "ubers"], "Moody Clause"),
+        ("moody", ["anythinggoes", "ubers"], "Moody Clause"),
         # Arena Trap is banned below Ubers
-        ("arenatrap", ["anythingoes", "ubers"], "Arena Trap Clause"),
+        ("arenatrap", ["anythinggoes", "ubers"], "Arena Trap Clause"),
         # Power Construct is banned below Ubers
-        ("powerconstruct", ["anythingoes", "ubers"], "Power Construct Clause"),
+        ("powerconstruct", ["anythinggoes", "ubers"], "Power Construct Clause"),
         # Light Clay is banned below OU
-        ("lightclay", ["anythingoes", "ubers", "ou"], "Light Clay Clause"),
+        ("lightclay", ["anythinggoes", "ubers", "ou"], "Light Clay Clause"),
         # King's Rock is banned below OU
-        ("kingsrock", ["anythingoes", "ubers", "ou"], "King's Rock Clause"),
+        ("kingsrock", ["anythinggoes", "ubers", "ou"], "King's Rock Clause"),
         # Slush Rush is banned below RU
-        ("slushrush", ["anythingoes", "ubers", "ou", "uu", "ru"], "Slush Rush Clause"),
+        ("slushrush", ["anythinggoes", "ubers", "ou", "uu", "ru"], "Slush Rush Clause"),
         # Drizzle is banned below RU
-        ("drizzle", ["anythingoes", "ubers", "ou", "uu", "ru"], "Drizzle Clause"),
+        ("drizzle", ["anythinggoes", "ubers", "ou", "uu", "ru"], "Drizzle Clause"),
         # Drought is banned below RU
-        ("drought", ["anythingoes", "ubers", "ou", "uu", "ru"], "Drought Clause"),
+        ("drought", ["anythinggoes", "ubers", "ou", "uu", "ru"], "Drought Clause"),
     ]
 
     for pokemon, movesets in moveset_database.items():
