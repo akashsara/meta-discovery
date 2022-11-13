@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+from poke_env.utils import to_id_str
 
 def calculate_edit_distance(previous_meta, current_meta, top_n):
     superset = sorted(
@@ -86,6 +86,12 @@ if __name__ == "__main__":
     smogon_postban = pd.read_csv(smogon_postban_data)
     our_preban = pd.read_csv(our_preban_data)
     our_postban = pd.read_csv(our_postban_data)
+
+    # Preprocess to ensure they use the same name format
+    smogon_preban["pokemon"] = smogon_preban["pokemon"].apply(to_id_str)
+    smogon_postban["pokemon"] = smogon_postban["pokemon"].apply(to_id_str)
+    our_preban["pokemon"] = our_preban["pokemon"].apply(to_id_str)
+    our_postban["pokemon"] = our_postban["pokemon"].apply(to_id_str)
 
     # Version 1: Find Mean Edit Distance
     print("===" * 10)
